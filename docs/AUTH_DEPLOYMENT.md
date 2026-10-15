@@ -10,10 +10,10 @@
 
 ## 서버 배포 준비
 
-1. Apps Script에 `apps-script/Code.gs`와 `appsscript.json`을 넣는다.
+1. Apps Script에 `apps-script/Code.gs`, `OwnerSetup.gs`와 `appsscript.json`을 넣는다.
 2. 로컬 CSPRNG로 32바이트 키를 생성해 Script Properties의 `AUTH_SECRET`에 64자리 hex로 저장한다. 키를 채팅·콘솔·저장소에 출력하지 않는다. 키 변경은 기존 OTP·세션을 무효화한다.
 3. `PILOT_EMAILS`에 허가받은 테스트 주소만 쉼표로 넣는다. 현재 pilot은 이 값이 없으면 실패하며 전체 가입을 열지 않는다.
-4. 소유자가 편집기에서 `initializeAuth_`를 한 번 실행한다. 비공개 인증 시트를 만들고 `AUTH_SHEET_ID`에 연결한다. 기존 저장소가 있으면 재초기화를 거부한다.
+4. 소유자가 편집기에서 `initializeAuth`를 한 번 실행한다. 내부의 `initializeAuth_`를 호출하는 편집기용 진입점이다. 밑줄로 끝나는 함수는 편집기 목록에 나오지 않는다. 비공개 인증 시트를 만들고 `AUTH_SHEET_ID`에 연결한다. 기존 저장소가 있으면 재초기화를 거부한다. 웹 API 라우터는 이 함수를 노출하지 않는다. HTML Service나 Apps Script API 실행 배포를 추가할 때 이 소유자용 파일을 배포본에서 제외한다.
 5. 필요한 OAuth 범위는 Sheets와 `script.send_mail` 두 가지다. Gmail 받은편지함 읽기·Drive 전체 읽기를 요구하지 않는다. Sheets 범위는 이 파일 하나로 제한되는 권한이 아니므로 소유자의 Google 승인 화면 확인이 필요하다.
 6. 웹 앱을 소유자 권한 실행·익명 접근으로 배포한다. 학교 정책에서 익명 접근이 불가능하면 그 상태를 기록하고 별도 호스트 구성을 검토한다.
 7. `/macros/s/.../exec` URL을 `config.json`의 `authEndpoint`에 넣는다. URL 자체는 비밀값이 아니다. `/dev` 주소나 리디렉션된 일회성 URL은 저장하지 않는다.
@@ -39,6 +39,8 @@
 ## 검증 기록
 
 2026-10-16 로컬 Node 테스트 10개 통과: 정확한 도메인/파일럿 제한, 코드 재사용 차단, 5분 만료, 이메일·목적 귀속, 오입력 한도, 재발급 무효화, 메일 실패/할당량, 세션 만료/폐기, 시간별·일별 제한, CORS 클라이언트 전송과 오류 처리.
+
+로컬 브라우저에서 소개 홈·메뉴·로그인·미연결 상태 안내를 확인했다. 390×844 모바일 화면에서 메뉴와 입력 폼이 한 열로 배치되는 것을 확인했다. Google 편집기에 Code.gs와 권한 매니페스트를 저장했다. `OwnerSetup.gs`는 로컬 준비 상태이며 Google 권한 승인 후 추가해야 한다. 현재 OAuth 승인 화면은 미승인 상태이며 실제 시트 생성·메일 발송은 하지 않았다.
 
 이 테스트는 Google 서비스 모형을 사용한다. Apps Script 실제 권한·시트 쓰기·MailApp 발송·LockService 동시 실행·브라우저 CORS를 증명하지 않는다.
 

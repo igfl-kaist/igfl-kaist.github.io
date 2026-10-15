@@ -36,31 +36,32 @@ function directory(kind) {
 function auth(register=false) {
  content.innerHTML=`<section class="auth-layout"><div class="auth-intro"><div class="eyebrow">WELCOME TO IGFL</div><h1>${register?'우리 리그의 시작,<br>선수로 함께해요.':'다시 만나 반가워요.'}</h1><p>카이스트 이메일로 받은<br>6자리 번호로 간편하게 로그인해요.</p><ul class="check-list"><li>비밀번호를 만들 필요가 없어요.</li><li>인증번호는 5분 동안 유효해요.</li><li>처음이라면 인증 후 선수 정보를 등록해요.</li></ul></div><div class="auth-card"><span class="badge">KAIST 이메일 인증</span><h2 class="field">${register?'선수 등록':'로그인'}</h2><p class="muted">우리 리그는 학교 이메일로 연결돼요.</p><form id="email-form"><div class="field"><label for="email">카이스트 이메일</label><input id="email" type="email" name="email" autocomplete="email" placeholder="name@kaist.ac.kr" required maxlength="254"><small class="help">@kaist.ac.kr 이메일을 사용해 주세요.</small></div><button class="button full" type="submit">인증번호 받기</button></form><form id="code-form" hidden><div class="field"><label for="code">이메일로 받은 인증번호</label><input class="code" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required><div class="code-row"><span class="timer" id="timer"></span><button class="text-button" id="resend" type="button" disabled>인증번호 다시 받기</button></div></div><button class="button full" type="submit">인증하고 계속하기</button><button class="text-button" id="change-email" type="button">다른 이메일 사용</button></form><div id="auth-status" class="status" role="status" aria-live="polite"></div><div class="divider">로그인은 본인 이메일 확인을 위한 절차예요. 선수 등록에 필요한 개인정보 안내와 동의는 다음 단계에서 확인해요.</div><details class="diagnostic"><summary>연결 점검</summary><p id="connection-state">인증 서버의 실제 응답을 확인해요.</p><button type="button" class="text-button" id="check-connection">서버 연결 확인</button></details></div></section>`;
  const emailForm=content.querySelector('#email-form'), codeForm=content.querySelector('#code-form'), status=content.querySelector('#auth-status'), email=content.querySelector('#email'), code=content.querySelector('#code'), resend=content.querySelector('#resend');
- let challenge, expiresAt=0, resendAt=0;
+ let challenge, expiresAt=0, resendAt=0, sending=false, verifying=false;
  const purpose=register?'register':'login';
- function timer(){const remaining=Math.max(0,Math.ceil((expiresAt-Date.now())/1000));content.querySelector('#timer').textContent=`남은 시간 ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;resend.disabled=Date.now()<resendAt;codeForm.querySelector('[type=submit]').disabled=remaining===0;}
+ function timer(){const remaining=Math.max(0,Math.ceil((expiresAt-Date.now())/1000));content.querySelector('#timer').textContent=`남은 시간 ${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')}`;resend.disabled=sending||verifying||Date.now()<resendAt;codeForm.querySelector('[type=submit]').disabled=sending||verifying||remaining===0;}
  async function request(){
-  if(!emailForm.reportValidity())return;
+  if(sending||verifying||!emailForm.reportValidity())return;
   const normalized=email.value.trim().toLowerCase();
   if(!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@kaist\.ac\.kr$/.test(normalized)){showError(status,{code:'INVALID_EMAIL'});return;}
-  const button=emailForm.querySelector('button');button.disabled=true;resend.disabled=true;
+  sending=true;const button=emailForm.querySelector('button');button.disabled=true;resend.disabled=true;
   status.className='status';status.textContent='인증번호를 보내고 있어요…';
   try {
    if(!api)throw {code:'NOT_CONFIGURED'};
    const data=await api('requestCode',{email:normalized,purpose});
+   if(!document.contains(emailForm))return;
    challenge=data.challengeId;expiresAt=data.expiresAt;resendAt=data.resendAt;
    email.value=normalized;email.readOnly=true;button.hidden=true;codeForm.hidden=false;code.value='';
    status.textContent='인증번호를 보냈어요. 메일함을 확인해 주세요.';timer();clearInterval(ticker);ticker=setInterval(timer,1000);code.focus();
-  } catch(error){showError(status,error);resend.disabled=Date.now()<resendAt;} finally{button.disabled=false;}
+  } catch(error){showError(status,error);} finally{sending=false;button.disabled=false;if(document.contains(emailForm)){if(challenge)timer();else resend.disabled=false;}}
  }
  emailForm.addEventListener('submit',event=>{event.preventDefault();void request();});
  resend.addEventListener('click',()=>void request());
  content.querySelector('#change-email').addEventListener('click',()=>{clearInterval(ticker);challenge=null;codeForm.hidden=true;email.readOnly=false;emailForm.querySelector('button').hidden=false;status.textContent='';email.focus();});
  codeForm.addEventListener('submit',async event=>{
-  event.preventDefault();if(!codeForm.reportValidity())return;
+  event.preventDefault();if(sending||verifying||!codeForm.reportValidity())return;verifying=true;
   const button=codeForm.querySelector('[type=submit]');button.disabled=true;status.className='status';status.textContent='인증번호를 확인하고 있어요…';
   try{const data=await api('verifyCode',{email:email.value,purpose,challengeId:challenge,code:code.value});saveToken(data.sessionToken);session=await api('session',{sessionToken:data.sessionToken});location.hash='#activity';}
-  catch(error){showError(status,error);button.disabled=Date.now()>=expiresAt;}
+  catch(error){showError(status,error);}finally{verifying=false;if(document.contains(button))timer();}
  });
  content.querySelector('#check-connection').addEventListener('click',async event=>{
   const result=content.querySelector('#connection-state');event.target.disabled=true;
