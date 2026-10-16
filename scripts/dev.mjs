@@ -68,8 +68,14 @@ const server = createServer(async (req, res) => {
               return { token };
             }
             const actor = sessions.get(data.token) || null;
-            if (data.operation === "view")
+            if (data.operation === "view") {
+              const next = structuredClone(state);
+              if (League.maintain(next, Date.now())) {
+                next.revision++;
+                await persist(next);
+              }
               return League.privateView(state, actor);
+            }
             if (data.operation === "command") {
               const out = League.execute(
                 state,
@@ -84,6 +90,9 @@ const server = createServer(async (req, res) => {
                 },
               );
               await persist(out.state);
+              if (out.result.withdrawn)
+                for (const [key, value] of sessions)
+                  if (value.userId === actor.userId) sessions.delete(key);
               return out.result;
             }
             throw new Error("Unknown operation");

@@ -8,7 +8,7 @@ import { createAuthClient, validateEndpoint } from '../src/auth-client.mjs';
 function server() {
   let now = 1800000000000, remaining = 100, sendFails = false, duplicateUuid = false, createdSheets = 0;
   const properties = { AUTH_SECRET: 'a'.repeat(64), AUTH_SHEET_ID: 'test-sheet', PILOT_EMAILS: 'player@kaist.ac.kr' };
-  const tables = { Challenges: [['record_json']], Sessions: [['record_json']] }, mail = [], logs = [];
+  const tables = { Challenges: [['record_json']], Sessions: [['record_json']], Accounts: [['record_json']] }, mail = [], logs = [];
   function sheet(name) {
     return { getLastRow: () => tables[name].length,
       appendRow: row => tables[name].push(row), deleteRow: row => tables[name].splice(row - 1, 1),
@@ -36,7 +36,7 @@ function server() {
   }
   const request = (purpose = 'login') => call('requestCode', { email: 'player@kaist.ac.kr', purpose });
   function verification(challenge, overrides = {}) { return call('verifyCode', { email: 'player@kaist.ac.kr', purpose: 'login', challengeId: challenge.data.challengeId, code: mail.at(-1).body.match(/\d{6}/)[0], ...overrides }); }
-  return { call, request, verification, mail, tables, properties, logs, inspect:()=>context.inspectRuntimeStatus(), allowKaist:()=>context.allowKaistEmailAuthentication(), advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; }, initialize:()=>context.initializeAuth_(), duplicateUuid:()=>{duplicateUuid=true;}, createdSheets:()=>createdSheets };
+  return { erase:(id,email)=>context.eraseAuthAccount_({sheetId:'test-sheet'},id,email), prune:()=>context.prune_({sheetId:'test-sheet'},now), call, request, verification, mail, tables, properties, logs, inspect:()=>context.inspectRuntimeStatus(), allowKaist:()=>context.allowKaistEmailAuthentication(), advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; }, initialize:()=>context.initializeAuth_(), duplicateUuid:()=>{duplicateUuid=true;}, createdSheets:()=>createdSheets };
 }
 
 test('explicit KAIST mode accepts other school mailboxes while rejecting subdomains and lookalikes', () => {
@@ -150,4 +150,20 @@ test('client rejects opaque/non-JSON/protocol failures', async () => {
   await assert.rejects(createAuthClient(endpoint,async()=>({ok:true,type:'opaque'}))('health'),e=>e.code==='CONNECTION_FAILED');
   await assert.rejects(createAuthClient(endpoint,async()=>({ok:true,json:async()=>({ok:true})}))('health'),e=>e.code==='INVALID_RESPONSE');
   await assert.rejects(createAuthClient(endpoint,async()=>{throw new Error('fetch failed');})('health'),e=>e.code==='CONNECTION_FAILED');
+});
+
+
+test('account identity persists across logins but erasure revokes every session and rejoining gets a new identity',()=>{
+ const s=server(),first=s.verification(s.request()),token=first.data.sessionToken;
+ const id=s.call('session',{sessionToken:token}).data.userId;
+ s.advance(60000);const second=s.verification(s.request());assert.equal(s.call('session',{sessionToken:second.data.sessionToken}).data.userId,id);
+ s.erase(id,'player@kaist.ac.kr');assert.equal(s.call('session',{sessionToken:token}).error.code,'SESSION_EXPIRED');assert.equal(s.call('session',{sessionToken:second.data.sessionToken}).error.code,'SESSION_EXPIRED');
+ assert.equal(JSON.stringify(s.tables).includes('player@kaist.ac.kr'),false);
+ const rejoin=s.verification(s.request());assert.notEqual(s.call('session',{sessionToken:rejoin.data.sessionToken}).data.userId,id);
+});
+test('privacy pruning removes terminal OTP hashes and expired sessions; pending erasure blocks new sessions',()=>{
+ const s=server(),first=s.verification(s.request());s.prune();assert.equal('codeHash' in JSON.parse(s.tables.Challenges[1][0]),false);
+ s.advance(43200000);s.prune();assert.equal(s.tables.Sessions.length,1);
+ const challenge=s.request();s.properties.PENDING_ACCOUNT_ERASURE=JSON.stringify({email:'player@kaist.ac.kr',userId:'old'});
+ assert.equal(s.verification(challenge).error.code,'ACCOUNT_ERASURE_PENDING');assert.equal(s.tables.Sessions.length,1);
 });

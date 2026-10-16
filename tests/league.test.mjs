@@ -102,6 +102,12 @@ test("external acceptance can complete a held schedule; new neutral candidates c
     matchId: id,
     accepted: true,
   });
+  assert.equal(h.s.matches.at(-1).status, "awaiting_opponent");
+  h.run("p7", "setRoster", {
+    teamId: "t2",
+    matchId: id,
+    roster: ["p7", "p8", "p9", "p10", "p11"],
+  });
   assert.equal(h.s.matches.at(-1).status, "scheduled");
   h.run("p1", "requestReferees", {
     teamId: "t1",
@@ -155,13 +161,14 @@ test("registration immediately accepts advisor eligibility and staff needs no ad
       name: "합성 신규 선수",
       lab: "합성 연구실",
       identifier: "NEW001",
-      birthday: "1997-01-01",
       eligibility: "advisor",
       department: "기계공학과",
       advisor: "합성 교수",
       advisorDepartment: "ISE",
       consent: true,
       consentVersion: "synthetic-v1",
+      publicConsent: true,
+      publicConsentVersion: h.s.settings.publicConsentVersion,
     };
   h.run("new1", "registerPlayer", base);
   assert.equal(h.s.players.at(-1).id, "new1");
@@ -193,8 +200,8 @@ test("registration immediately accepts advisor eligibility and staff needs no ad
     (e) => e.code === "CONSENT_REQUIRED",
   );
   assert.throws(
-    () => h.run("new5", "registerPlayer", { ...base, birthday: "2026-02-31" }),
-    (e) => e.code === "INVALID_INPUT",
+    () => h.run("new5", "registerPlayer", { ...base, publicConsent: false }),
+    (e) => e.code === "PUBLIC_CONSENT_REQUIRED",
   );
   assert.throws(
     () => h.run("new6", "registerPlayer", base),
@@ -349,7 +356,7 @@ test("only own teams/actual participants can submit records; score totals must m
     (e) => e.code === "INVALID_SCORER",
   );
   assert.throws(
-    () => h.run("p1", "submitResult", { ...result(), goals: { p1: 1 } }),
+    () => h.run("p1", "submitResult", { ...result(), goals: { p1: 3 } }),
     (e) => e.code === "GOAL_TOTAL",
   );
   assert.throws(

@@ -47,10 +47,14 @@ const leagueUI = createLeagueUI({
       throw error;
     }
   },
-  onLogout: async () => {
-    if (api) await api("logout", { sessionToken: readToken() });
-    saveToken(null);
-    session = null;
+  onLogout: async ({ alreadyRevoked = false } = {}) => {
+    try {
+      if (api && !alreadyRevoked)
+        await api("logout", { sessionToken: readToken() });
+    } finally {
+      saveToken(null);
+      session = null;
+    }
   },
 });
 function el(tag, text, className) {
@@ -90,7 +94,7 @@ function home() {
   content.innerHTML = `<section class="hero"><div><div class="eyebrow">ISE & GSDS FUTSAL LEAGUE</div><h1>연구실 밖에서,<br>함께 뛰는 우리.</h1><p>서로 다른 연구실의 우리가 한 팀이 되는 곳.<br>자유롭게 경기를 만들고, 함께 리그의 이야기를 채워가요.</p><div class="actions"><a class="button" href="#register">선수로 함께하기 <span aria-hidden="true">↗</span></a><a class="button secondary" href="#teams">우리 리그의 팀들</a></div></div><div class="poster"><small>CONNECTED THROUGH FUTSAL</small><strong>OUR LAB.<br>OUR TEAM.</strong><small>IGFL · ISE & GSDS</small></div></section><div class="section-heading"><h2>우리의 리그는 이렇게</h2><span class="eyebrow">PLAY TOGETHER</span></div><section class="cards" aria-label="리그 안내"><article class="card"><span class="number">01 / JOIN</span><h3>함께할 팀을 찾아요</h3><p>ISE·GSDS 대학원생과 교직원, 두 학과 교수님께 지도받는 대학원생이 함께해요. 무소속으로 시작해도 좋아요.</p></article><article class="card"><span class="number">02 / PLAY</span><h3>우리의 경기를 만들어요</h3><p>팀끼리 시간과 장소를 정하고 중립 심판과 함께 뛰어요. 5대5, 전후반 각 20분, 무제한 교체로 진행해요.</p></article><article class="card"><span class="number">03 / CONNECT</span><h3>한 경기씩 쌓이는 기록</h3><p>확정한 결과는 Elo 파워랭킹에 반영돼요. 득점과 심판 활동도 함께 기억해요.</p></article></section><aside class="intro-note">리그 참가 안내와 시즌 일정을 준비하고 있어요. 선수 등록은 개인정보 안내가 확정되면 열려요.</aside>`;
 }
 function auth(register = false) {
-  content.innerHTML = `<section class="auth-layout"><div class="auth-intro"><div class="eyebrow">WELCOME TO IGFL</div><h1>${register ? "우리 리그의 시작,<br>선수로 함께해요." : "다시 만나 반가워요."}</h1><p>카이스트 이메일로 받은<br>6자리 번호로 간편하게 로그인해요.</p><ul class="check-list"><li>비밀번호를 만들 필요가 없어요.</li><li>인증번호는 5분 동안 유효해요.</li><li>처음이라면 인증 후 선수 정보를 등록해요.</li></ul></div><div class="auth-card"><span class="badge">KAIST 이메일 인증</span><h2 class="field">${register ? "선수 등록" : "로그인"}</h2><p class="muted">우리 리그는 학교 이메일로 연결돼요.</p><form id="email-form"><div class="field"><label for="email">카이스트 이메일</label><input id="email" type="email" name="email" autocomplete="email" placeholder="name@kaist.ac.kr" required maxlength="254"><small class="help">@kaist.ac.kr 이메일을 사용해 주세요.</small></div><button class="button full" type="submit">인증번호 받기</button></form><form id="code-form" hidden><div class="field"><label for="code">이메일로 받은 인증번호</label><input class="code" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required><div class="code-row"><span class="timer" id="timer"></span><button class="text-button" id="resend" type="button" disabled>인증번호 다시 받기</button></div></div><button class="button full" type="submit">인증하고 계속하기</button><button class="text-button" id="change-email" type="button">다른 이메일 사용</button></form><div id="auth-status" class="status" role="status" aria-live="polite"></div><div class="divider">로그인은 본인 이메일 확인을 위한 절차예요. 선수 등록에 필요한 개인정보 안내와 동의는 다음 단계에서 확인해요.</div><details class="diagnostic"><summary>연결 점검</summary><p id="connection-state">인증 서버의 실제 응답을 확인해요.</p><button type="button" class="text-button" id="check-connection">서버 연결 확인</button></details></div></section>`;
+  content.innerHTML = `<section class="auth-layout"><div class="auth-intro"><div class="eyebrow">WELCOME TO IGFL</div><h1>${register ? "우리 리그의 시작,<br>선수로 함께해요." : "다시 만나 반가워요."}</h1><p>카이스트 이메일로 받은<br>6자리 번호로 간편하게 로그인해요.</p><ul class="check-list"><li>비밀번호를 만들 필요가 없어요.</li><li>인증번호는 5분 동안 유효해요.</li><li>처음이라면 인증 후 선수 정보를 등록해요.</li></ul></div><div class="auth-card"><span class="badge">KAIST 이메일 인증</span><h2 class="field">${register ? "선수 등록" : "로그인"}</h2><p class="muted">우리 리그는 학교 이메일로 연결돼요.</p><form id="email-form"><div class="field"><label for="email">카이스트 이메일</label><input id="email" type="email" name="email" autocomplete="email" placeholder="name@kaist.ac.kr" required maxlength="254"><small class="help">@kaist.ac.kr 이메일을 사용해 주세요.</small></div><button class="button full" type="submit">인증번호 받기</button></form><form id="code-form" hidden><div class="field"><label for="code">이메일로 받은 인증번호</label><input class="code" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required><div class="code-row"><span class="timer" id="timer"></span><button class="text-button" id="resend" type="button" disabled>인증번호 다시 받기</button></div></div><button class="button full" type="submit">인증하고 계속하기</button><button class="text-button" id="change-email" type="button">다른 이메일 사용</button></form><div id="auth-status" class="status" role="status" aria-live="polite"></div><div class="divider">로그인·이메일 확인을 위해 학교 이메일과 인증 요청 정보를 처리해요. 인증번호는 5분 동안 유효하며, 최소 남용 방지 정보는 최대 24시간 보관해요. 선수 프로필은 별도 동의 후 등록해요.</div><details class="diagnostic"><summary>연결 점검</summary><p id="connection-state">인증 서버의 실제 응답을 확인해요.</p><button type="button" class="text-button" id="check-connection">서버 연결 확인</button></details></div></section>`;
   const emailForm = content.querySelector("#email-form"),
     codeForm = content.querySelector("#code-form"),
     status = content.querySelector("#auth-status"),

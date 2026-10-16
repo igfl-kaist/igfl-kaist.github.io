@@ -27,12 +27,13 @@ export function fixture(now = Date.now()) {
       id,
       email: `synthetic-${i}@example.invalid`,
       identifier: `TEST${i}`,
-      birthday: "1998-01-01",
       eligibility: i === 23 ? "staff" : "graduate",
       department: "ISE",
       advisor: i === 23 ? "해당 없음" : "테스트 교수",
       consentVersion: "synthetic-v1",
       consentedAt: now - 86400000,
+      publicConsentVersion: s.settings.publicConsentVersion,
+      publicConsentedAt: now - 86400000,
     });
   }
   for (let n = 0; n < 3; n++) {

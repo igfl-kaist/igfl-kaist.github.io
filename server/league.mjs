@@ -1,4 +1,5 @@
 // Shared domain service: Node and Apps Script run this exact implementation.
+import { LeaguePolicies } from "./policies.mjs";
 export const League = (() => {
   const copy = (value) => JSON.parse(JSON.stringify(value));
   const error = (code, message) => {
@@ -64,6 +65,7 @@ export const League = (() => {
       schema: 1,
       revision: 0,
       settings: {
+        ...LeaguePolicies.settings,
         registrationOpen: false,
         privacyVersion: "",
         privacyNotice: "",
@@ -83,10 +85,14 @@ export const League = (() => {
       audit: [],
       outbox: [],
       ratingLedger: [],
+      invitations: [],
+      notifications: [],
+      sanctions: [],
+      seasons: [],
     };
   }
   function maintain(s, now) {
-    let changed = false;
+    let changed = LeaguePolicies.maintain(s, now);
     for (const t of s.teams) {
       if (t.status === "active" && t.members.length < 6) {
         t.status = "paused";
@@ -133,7 +139,12 @@ export const League = (() => {
       ]),
     );
     const finals = s.matches
-      .filter((m) => m.status === "final" && m.seasonId === s.settings.seasonId)
+      .filter(
+        (m) =>
+          (m.status === "final" || m.officialRecord) &&
+          m.seasonId === s.settings.seasonId,
+      )
+      .map((m) => (m.status === "final" ? m : m.officialRecord))
       .sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
     const appearances = new Map(),
       referees = new Map(),
@@ -240,6 +251,9 @@ export const League = (() => {
     const p = member(s, actor.userId),
       team = teamOf(s, actor.userId),
       isLeader = !!team && [team.captainId, team.viceId].includes(actor.userId);
+    const officialMatches = s.matches
+      .filter((m) => m.status === "final" || m.officialRecord)
+      .map((m) => (m.status === "final" ? m : m.officialRecord));
     const visibleMatch = (m) =>
       actor.admin ||
       (team && [m.teamA, m.teamB].includes(team.id)) ||
@@ -284,7 +298,7 @@ export const League = (() => {
         teamId: team?.id || null,
         isLeader,
         stats: {
-          appearances: s.matches.filter(
+          appearances: officialMatches.filter(
             (m) =>
               m.status === "final" &&
               m.seasonId === s.settings.seasonId &&
@@ -292,7 +306,7 @@ export const League = (() => {
                 sub.players.some((p) => p.id === actor.userId),
               ),
           ).length,
-          goals: s.matches
+          goals: officialMatches
             .filter(
               (m) => m.status === "final" && m.seasonId === s.settings.seasonId,
             )
@@ -305,7 +319,7 @@ export const League = (() => {
                 ),
               0,
             ),
-          refereed: s.matches.filter(
+          refereed: officialMatches.filter(
             (m) =>
               m.status === "final" &&
               m.seasonId === s.settings.seasonId &&
@@ -314,6 +328,22 @@ export const League = (() => {
         },
       },
       matches,
+      invitations: copy(
+        (s.invitations || []).filter(
+          (i) => isLeader && [i.fromTeam, i.toTeam].includes(team.id),
+        ),
+      ),
+      notifications: copy(
+        (s.notifications || []).filter((n) => isLeader && n.teamId === team.id),
+      ),
+      sanctions: copy(
+        (s.sanctions || []).filter(
+          (x) =>
+            actor.admin ||
+            x.playerId === actor.userId ||
+            (isLeader && team.members.includes(x.playerId)),
+        ),
+      ),
       requests: copy(
         s.requests.filter(
           (r) =>
@@ -352,9 +382,22 @@ export const League = (() => {
     };
   }
   function enqueue(s, ctx, kind, recipients, entityId) {
+    const version = s.matches.find((m) => m.id === entityId)?.version || 1;
+    if (
+      s.outbox.some(
+        (j) =>
+          j.kind === kind &&
+          j.entityId === entityId &&
+          JSON.stringify(j.recipients) === JSON.stringify(recipients) &&
+          (j.version === version ||
+            ["pending", "sending", "uncertain"].includes(j.status)),
+      )
+    )
+      return;
     s.outbox.push({
       id: ctx.id(),
       kind,
+      version,
       recipients,
       entityId,
       status: "pending",
@@ -367,7 +410,7 @@ export const League = (() => {
     require(ids.length >= 5 &&
       ids.length <=
         20, "INVALID_ROSTER", "교체 선수를 포함해 5~20명을 선택해 주세요.");
-    for (const id of ids)
+    for (const id of ids) {
       require(t.members.includes(id) ||
         s.memberships.some(
           (h) =>
@@ -376,10 +419,20 @@ export const League = (() => {
             h.joinedAt <= m.startsAt &&
             h.leftAt >= m.startsAt,
         ), "INVALID_ROSTER", "본인 팀 소속 또는 경기 당시 소속 선수만 선택할 수 있어요.");
+      require(!LeaguePolicies.isSuspended(
+        s,
+        id,
+        m,
+      ), "PLAYER_SUSPENDED", "다음 공식 경기 출전 정지 선수가 포함돼 있어요.");
+    }
     return snapshot(s, ids);
   }
   function updateMatchState(s, m, ctx) {
-    if (m.status === "final") return;
+    if (LeaguePolicies.terminal(m)) return;
+    if (m.incident || m.privacyReviewRequired) {
+      m.status = "review";
+      return;
+    }
     if (s.issues.some((i) => i.matchId === m.id && i.status === "open")) {
       m.status = "review";
       return;
@@ -395,6 +448,16 @@ export const League = (() => {
       enqueue(s, ctx, "scoreMismatch", "admins", m.id);
       return;
     }
+    const total = (values) =>
+      Object.values(values || {}).reduce((sum, n) => sum + n, 0);
+    if (
+      total(a.goals) + total(b.ownGoals) !== a.score.a ||
+      total(b.goals) + total(a.ownGoals) !== a.score.b
+    ) {
+      m.status = "mismatch";
+      enqueue(s, ctx, "scoreMismatch", "admins", m.id);
+      return;
+    }
     m.status =
       m.confirmations[m.teamA] === m.version &&
       m.confirmations[m.teamB] === m.version
@@ -402,6 +465,10 @@ export const League = (() => {
         : "awaiting_confirmations";
     if (m.status === "ready" && m.externalReferee)
       enqueue(s, ctx, "externalApproval", "admins", m.id);
+    if (m.status === "ready" && m.readyVersion !== m.version) {
+      m.readyAt = ctx.now;
+      m.readyVersion = m.version;
+    }
   }
   function apply(s, actor, command, args, ctx) {
     require(actor?.userId, "UNAUTHENTICATED", "로그인이 필요해요.");
@@ -423,652 +490,734 @@ export const League = (() => {
       require(p ||
         actor.admin, "NOT_REGISTERED", "선수 등록을 먼저 완료해 주세요.");
     let entityId = actor.userId;
-    switch (command) {
-      case "registerPlayer": {
-        require(s.settings.registrationOpen &&
-          s.settings.privacyVersion &&
-          s.settings
-            .privacyNotice, "REGISTRATION_CLOSED", "개인정보 안내 확정 전에는 선수 정보를 받지 않아요.");
-        require(!p, "ALREADY_REGISTERED", "이미 등록된 선수예요.");
-        require(args.consent === true &&
-          args.consentVersion ===
+    const extra = LeaguePolicies.apply(s, actor, command, args, ctx, {
+      neutral,
+      enqueue,
+      updateMatchState,
+      records,
+    });
+    if (extra.handled) entityId = extra.entityId;
+    else
+      switch (command) {
+        case "registerPlayer": {
+          require(s.settings.registrationOpen &&
+            s.settings.privacyVersion &&
             s.settings
-              .privacyVersion, "CONSENT_REQUIRED", "현재 개인정보 수집·이용 안내에 동의해 주세요.");
-        require(/^[^@\s]+@kaist\.ac\.kr$/.test(
-          actor.email,
-        ), "INVALID_EMAIL", "학교 이메일 인증이 필요해요.");
-        const eligibility = text(args.eligibility),
-          department = text(args.department),
-          advisorDepartment = args.advisorDepartment;
-        require(["graduate", "staff", "advisor"].includes(
-          eligibility,
-        ), "INELIGIBLE", "참가 자격을 선택해 주세요.");
-        require((eligibility === "advisor" &&
-          ["ISE", "GSDS"].includes(advisorDepartment)) ||
-          (eligibility !== "advisor" &&
-            ["ISE", "GSDS"].includes(
-              department,
-            )), "INELIGIBLE", "소속 학과 또는 지도교수 소속을 확인해 주세요.");
-        const identifier = text(args.identifier, 30),
-          birthday = text(args.birthday, 10);
-        require(/^\d{4}-\d{2}-\d{2}$/.test(birthday) &&
-          !Number.isNaN(Date.parse(birthday)) &&
-          new Date(birthday).toISOString().slice(0, 10) === birthday &&
-          Date.parse(birthday) <
-            ctx.now, "INVALID_INPUT", "생년월일을 확인해 주세요.");
-        require(!s.profiles.some(
-          (r) => r.identifier === identifier,
-        ), "DUPLICATE_IDENTIFIER", "이미 등록된 학번·사번이에요. 운영진에게 확인을 요청해 주세요.");
-        const name = text(args.name, 40),
-          lab = text(args.lab, 100),
-          advisor =
-            eligibility === "staff" ? "해당 없음" : text(args.advisor, 60);
-        s.players.push({
-          id: actor.userId,
-          name,
-          lab,
-          referee: args.referee === true,
-        });
-        s.profiles.push({
-          id: actor.userId,
-          email: actor.email,
-          eligibility,
-          department,
-          identifier,
-          birthday,
-          advisor,
-          advisorDepartment:
-            eligibility === "advisor" ? advisorDepartment : null,
-          consentVersion: s.settings.privacyVersion,
-          consentedAt: ctx.now,
-        });
-        if (args.teamId) {
-          get(s.teams, args.teamId);
-          s.requests.push({
-            id: ctx.id(),
-            type: "join",
-            teamId: args.teamId,
-            playerId: actor.userId,
-            message: "선수 등록과 함께 가입을 요청했어요.",
-            status: "pending",
-            createdAt: ctx.now,
+              .privacyNotice, "REGISTRATION_CLOSED", "개인정보 안내 확정 전에는 선수 정보를 받지 않아요.");
+          require(!p, "ALREADY_REGISTERED", "이미 등록된 선수예요.");
+          require(args.consent === true &&
+            args.consentVersion ===
+              s.settings
+                .privacyVersion, "CONSENT_REQUIRED", "현재 개인정보 수집·이용 안내에 동의해 주세요.");
+          require(args.publicConsent === true &&
+            args.publicConsentVersion ===
+              s.settings
+                .publicConsentVersion, "PUBLIC_CONSENT_REQUIRED", "이름·연구실과 리그 기록의 필수 공개 안내에 동의해 주세요.");
+          require(/^[^@\s]+@kaist\.ac\.kr$/.test(
+            actor.email,
+          ), "INVALID_EMAIL", "학교 이메일 인증이 필요해요.");
+          const eligibility = text(args.eligibility),
+            department = text(args.department),
+            advisorDepartment = args.advisorDepartment;
+          require(["graduate", "staff", "advisor"].includes(
+            eligibility,
+          ), "INELIGIBLE", "참가 자격을 선택해 주세요.");
+          require((eligibility === "advisor" &&
+            ["ISE", "GSDS"].includes(advisorDepartment)) ||
+            (eligibility !== "advisor" &&
+              ["ISE", "GSDS"].includes(
+                department,
+              )), "INELIGIBLE", "소속 학과 또는 지도교수 소속을 확인해 주세요.");
+          const identifier = text(args.identifier, 30);
+          require(!s.profiles.some(
+            (r) => r.identifier === identifier,
+          ), "DUPLICATE_IDENTIFIER", "이미 등록된 학번·사번이에요. 운영진에게 확인을 요청해 주세요.");
+          const name = text(args.name, 40),
+            lab = text(args.lab, 100),
+            advisor =
+              eligibility === "staff" ? "해당 없음" : text(args.advisor, 60);
+          s.players.push({
+            id: actor.userId,
+            name,
+            lab,
+            referee: args.referee === true,
           });
-        }
-        break;
-      }
-      case "requestEligibility": {
-        s.issues.push({
-          id: ctx.id(),
-          type: "eligibility",
-          reporterId: actor.userId,
-          message: text(args.message, 1000),
-          status: "open",
-          createdAt: ctx.now,
-        });
-        enqueue(s, ctx, "eligibility", "admins", actor.userId);
-        break;
-      }
-      case "createTeam":
-      case "resubmitTeam": {
-        require(!teamOf(
-          s,
-          actor.userId,
-        ), "ALREADY_MEMBER", "기존 팀에서 먼저 탈퇴해 주세요.");
-        const draft =
-          command === "resubmitTeam" ? get(s.teams, args.teamId) : null;
-        if (draft)
-          require(draft.requesterId === actor.userId &&
-            draft.status ===
-              "needs_changes", "FORBIDDEN", "본인의 보완 요청 신청만 수정할 수 있어요.");
-        require(!s.teams.some(
-          (t) =>
-            t.id !== draft?.id &&
-            t.requesterId === actor.userId &&
-            ["pending", "needs_changes"].includes(t.status),
-        ), "APPLICATION_EXISTS", "이미 신청한 팀을 확인하거나 보완해 주세요.");
-        const ids = list(args.members);
-        require(ids.length >= 6 &&
-          ids.length <= 20, "TEAM_SIZE", "등록 선수 6~20명으로 신청해 주세요.");
-        require(ids.includes(actor.userId) &&
-          ids.includes(args.captainId) &&
-          ids.includes(args.viceId) &&
-          args.captainId !== args.viceId &&
-          [args.captainId, args.viceId].includes(
-            actor.userId,
-          ), "INVALID_LEADERS", "신청자는 대표여야 하며 주장·부주장은 서로 다른 팀원이어야 해요.");
-        ids.forEach((id) => {
-          get(s.players, id);
-          require(!teamOf(
-            s,
-            id,
-          ), "ALREADY_MEMBER", "이미 소속 팀이 있는 선수가 있어요.");
-        });
-        const name = text(args.name, 50);
-        require(!s.teams.some(
-          (t) => t.name === name && t.id !== draft?.id,
-        ), "DUPLICATE_TEAM", "같은 이름의 팀이 있어요.");
-        entityId = draft?.id || ctx.id();
-        const application = {
-          id: entityId,
-          name,
-          description: text(args.description, 500),
-          members: [],
-          pendingMembers: [...ids],
-          captainId: args.captainId,
-          viceId: args.viceId,
-          recruiting: false,
-          status: "pending",
-          requesterId: actor.userId,
-          createdAt: ctx.now,
-        };
-        if (draft) Object.assign(draft, application);
-        else s.teams.push(application);
-        enqueue(s, ctx, "teamApplication", "admins", entityId);
-        break;
-      }
-      case "reviewTeam": {
-        admin(actor);
-        const t = get(s.teams, args.teamId);
-        require(t.status ===
-          "pending", "INVALID_STATE", "승인 대기 신청이 아니에요.");
-        entityId = t.id;
-        if (args.approve) {
-          require(t.pendingMembers.length >= 6 &&
-            t.pendingMembers.length <=
-              20, "TEAM_SIZE", "팀 인원을 확인해 주세요.");
-          t.pendingMembers.forEach((id) =>
-            require(member(s, id) &&
-              !teamOf(
-                s,
-                id,
-              ), "ALREADY_MEMBER", "현재 소속이 변경된 선수가 있어요."),
-          );
-          t.members = [...t.pendingMembers];
-          t.status = "active";
-          for (const id of t.members)
-            s.memberships.push({
-              playerId: id,
-              teamId: t.id,
-              joinedAt: ctx.now,
-              leftAt: null,
-            });
-        } else {
-          t.status = "needs_changes";
-          t.reviewNote = text(args.reason, 1000);
-        }
-        break;
-      }
-      case "updateTeam": {
-        const t = lead(s, actor, args.teamId);
-        entityId = t.id;
-        t.description = text(args.description, 500);
-        t.recruiting = args.recruiting === true;
-        if (args.image !== undefined) {
-          require(args.image === null ||
-            ctx.validateImage(
-              args.image,
-            ), "INVALID_IMAGE", "JPG·PNG·WebP 이미지와 크기를 확인해 주세요.");
-          t.image = args.image;
-        }
-        break;
-      }
-      case "joinRequest": {
-        require(!teamOf(
-          s,
-          p.id,
-        ), "ALREADY_MEMBER", "기존 팀에서 먼저 탈퇴해 주세요.");
-        const t = get(s.teams, args.teamId);
-        require(["active", "paused"].includes(
-          t.status,
-        ), "INVALID_STATE", "가입 문의를 받는 팀이 아니에요.");
-        require(!s.requests.some(
-          (r) =>
-            r.type === "join" &&
-            r.playerId === p.id &&
-            r.teamId === t.id &&
-            r.status === "pending",
-        ), "ALREADY_REQUESTED", "이미 가입 요청을 보냈어요.");
-        s.requests.push({
-          id: ctx.id(),
-          type: "join",
-          teamId: t.id,
-          playerId: p.id,
-          message: text(args.message, 500),
-          status: "pending",
-          createdAt: ctx.now,
-        });
-        break;
-      }
-      case "recruit": {
-        const t = lead(s, actor, args.teamId),
-          id = text(args.playerId);
-        get(s.players, id);
-        require(["active", "paused"].includes(
-          t.status,
-        ), "INVALID_STATE", "충원이 가능한 팀이 아니에요.");
-        require(!teamOf(
-          s,
-          id,
-        ), "ALREADY_MEMBER", "이미 소속 팀이 있는 선수예요.");
-        require(t.members.length < 20, "TEAM_FULL", "팀 정원은 20명이에요.");
-        require(!s.matches.some(
-          (m) =>
-            m.refereeId === id &&
-            m.startsAt > ctx.now &&
-            m.status !== "final" &&
-            [m.teamA, m.teamB].includes(t.id),
-        ), "REFEREE_CONFLICT", "이 팀의 예정 경기 심판으로 배정된 선수예요.");
-        t.members.push(id);
-        s.memberships.push({
-          playerId: id,
-          teamId: t.id,
-          joinedAt: ctx.now,
-          leftAt: null,
-        });
-        s.requests
-          .filter(
-            (r) =>
-              r.type === "join" && r.playerId === id && r.status === "pending",
-          )
-          .forEach(
-            (r) => (r.status = r.teamId === t.id ? "accepted" : "closed"),
-          );
-        entityId = t.id;
-        break;
-      }
-      case "release":
-      case "leaveTeam": {
-        const t =
-          command === "release"
-            ? lead(s, actor, args.teamId)
-            : teamOf(s, actor.userId);
-        require(t, "NOT_MEMBER", "현재 소속 팀이 없어요.");
-        const id = command === "release" ? args.playerId : actor.userId;
-        require(t.members.includes(
-          id,
-        ), "NOT_MEMBER", "이 팀 소속 선수가 아니에요.");
-        t.members = t.members.filter((x) => x !== id);
-        if (t.captainId === id) t.captainId = null;
-        if (t.viceId === id) t.viceId = null;
-        s.memberships
-          .filter(
-            (h) => h.teamId === t.id && h.playerId === id && h.leftAt === null,
-          )
-          .forEach((h) => (h.leftAt = ctx.now));
-        entityId = t.id;
-        break;
-      }
-      case "requestLeaders": {
-        const t = lead(s, actor, args.teamId);
-        require(t.members.includes(args.captainId) &&
-          t.members.includes(args.viceId) &&
-          args.captainId !==
-            args.viceId, "INVALID_LEADERS", "현재 팀원 중 서로 다른 두 사람을 선택해 주세요.");
-        require(!s.requests.some(
-          (r) =>
-            r.type === "leaders" && r.teamId === t.id && r.status === "pending",
-        ), "ALREADY_REQUESTED", "대표 교체 승인 대기 중이에요.");
-        s.requests.push({
-          id: ctx.id(),
-          type: "leaders",
-          teamId: t.id,
-          requesterId: actor.userId,
-          captainId: args.captainId,
-          viceId: args.viceId,
-          status: "pending",
-          createdAt: ctx.now,
-        });
-        break;
-      }
-      case "reviewLeaders": {
-        admin(actor);
-        const r = get(s.requests, args.requestId),
-          t = get(s.teams, r.teamId);
-        require(r.type === "leaders" &&
-          r.status ===
-            "pending", "INVALID_STATE", "승인 대기 요청이 아니에요.");
-        if (args.approve) {
-          require(t.members.includes(r.captainId) &&
-            t.members.includes(r.viceId) &&
-            r.captainId !==
-              r.viceId, "INVALID_LEADERS", "후보의 현재 소속을 다시 확인해 주세요.");
-          t.captainId = r.captainId;
-          t.viceId = r.viceId;
-          r.status = "accepted";
-        } else {
-          r.status = "needs_changes";
-          r.reason = text(args.reason, 1000);
-        }
-        entityId = t.id;
-        break;
-      }
-      case "schedule": {
-        const t = lead(s, actor, args.teamId),
-          other = get(s.teams, args.opponentId);
-        require(t.id !== other.id &&
-          t.status === "active" &&
-          other.status ===
-            "active", "INACTIVE_TEAM", "활동 중인 서로 다른 팀을 선택해 주세요.");
-        require(s.settings
-          .seasonOpen, "SEASON_CLOSED", "시즌 일정이 아직 열리지 않았어요.");
-        const startsAt = Number(args.startsAt);
-        require(Number.isFinite(startsAt) &&
-          startsAt >
-            ctx.now, "INVALID_DATE", "미래의 경기 일시를 입력해 주세요.");
-        const m = {
-          id: ctx.id(),
-          seasonId: s.settings.seasonId,
-          teamA: t.id,
-          teamB: other.id,
-          startsAt,
-          place: text(args.place, 120),
-          version: 1,
-          scheduleVersion: 1,
-          rosters: {},
-          refereeRequests: [],
-          refereeId: null,
-          externalReferee: null,
-          submissions: {},
-          confirmations: {},
-          history: [],
-          status: "awaiting_referee",
-          createdAt: ctx.now,
-        };
-        require(!s.matches.some(
-          (x) =>
-            x.startsAt === startsAt &&
-            [x.teamA, x.teamB].includes(t.id) &&
-            [x.teamA, x.teamB].includes(other.id),
-        ), "DUPLICATE_MATCH", "이미 같은 대진과 일시의 경기가 있어요.");
-        m.rosters[t.id] = validRoster(s, t, args.roster, m);
-        if (args.externalReferee) {
-          m.externalReferee = {
-            name: text(args.externalReferee.name, 60),
-            accepted: args.externalReferee.accepted === true,
-          };
-          if (m.externalReferee.accepted) m.status = "scheduled";
-        } else {
-          list(args.refereeIds);
-          require(args.refereeIds.length >
-            0, "REFEREE_REQUIRED", "심판 후보를 한 명 이상 선택해 주세요.");
-          for (const id of args.refereeIds) {
-            require(neutral(
-              s,
-              id,
-              m,
-            ), "NON_NEUTRAL_REFEREE", "양 팀 소속이 아닌 심판을 선택해 주세요.");
-            m.refereeRequests.push({
-              playerId: id,
+          s.profiles.push({
+            id: actor.userId,
+            email: actor.email,
+            eligibility,
+            department,
+            identifier,
+            advisor,
+            advisorDepartment:
+              eligibility === "advisor" ? advisorDepartment : null,
+            consentVersion: s.settings.privacyVersion,
+            consentedAt: ctx.now,
+            publicConsentVersion: s.settings.publicConsentVersion,
+            publicConsentedAt: ctx.now,
+          });
+          if (args.teamId) {
+            get(s.teams, args.teamId);
+            s.requests.push({
+              id: ctx.id(),
+              type: "join",
+              teamId: args.teamId,
+              playerId: actor.userId,
+              message: "선수 등록과 함께 가입을 요청했어요.",
               status: "pending",
-              scheduleVersion: 1,
+              createdAt: ctx.now,
             });
-            enqueue(s, ctx, "refereeRequest", [id], m.id);
           }
-        }
-        s.matches.push(m);
-        entityId = m.id;
-        break;
-      }
-      case "setRoster":
-      case "confirmExternalReferee":
-      case "requestReferees":
-      case "acceptReferee":
-      case "declineReferee":
-      case "submitResult":
-      case "confirmResult":
-      case "dispute":
-      case "finalize": {
-        const m = get(s.matches, args.matchId);
-        entityId = m.id;
-        require(m.status !==
-          "final", "FINAL_IMMUTABLE", "확정 기록의 정정은 운영진 정책 확정 후 처리해요.");
-        require(args.matchVersion ===
-          m.version, "STALE_MATCH", "경기 기록이 변경됐어요. 최신 기록을 확인해 주세요.");
-        if (command === "acceptReferee" || command === "declineReferee") {
-          const r = m.refereeRequests.find(
-            (r) =>
-              r.playerId === actor.userId &&
-              r.status === "pending" &&
-              r.scheduleVersion === m.scheduleVersion,
-          );
-          require(r &&
-            !m.refereeId, "REFEREE_ASSIGNED", "이미 다른 심판이 배정됐거나 종료된 요청이에요.");
-          if (command === "declineReferee") {
-            r.status = "declined";
-            break;
-          }
-          require(m.startsAt > ctx.now &&
-            neutral(
-              s,
-              actor.userId,
-              m,
-            ), "NON_NEUTRAL_REFEREE", "현재 양 팀 소속이 아닌 심판만 수락할 수 있어요.");
-          require(!s.matches.some(
-            (x) =>
-              x.id !== m.id &&
-              x.refereeId === actor.userId &&
-              Math.abs(x.startsAt - m.startsAt) < 45 * 60000,
-          ), "REFEREE_CONFLICT", "같은 시간대에 배정된 경기가 있어요.");
-          m.refereeId = actor.userId;
-          r.status = "accepted";
-          m.refereeRequests
-            .filter((x) => x !== r && x.status === "pending")
-            .forEach((x) => (x.status = "closed"));
-          m.status = "scheduled";
           break;
         }
-        if (command === "finalize") {
-          require(m.status ===
-            "ready", "RESULT_NOT_READY", "양 팀 확인·스코어 일치와 이의 해결이 필요해요.");
-          if (m.externalReferee) {
-            admin(actor);
-            require(m.externalReferee.accepted &&
-              args.externalConfirmed ===
-                true, "EXTERNAL_CONFIRMATION_REQUIRED", "외부 심판 진행 여부를 확인해 주세요.");
-          } else
-            require(m.refereeId === actor.userId &&
-              neutral(
-                s,
-                actor.userId,
-                m,
-              ), "FORBIDDEN", "배정된 중립 심판만 최종 승인할 수 있어요.");
-          m.status = "final";
-          m.finalizedAt = ctx.now;
-          m.finalizedBy = actor.userId;
-          m.finalizedVersion = m.version;
-          s.ratingLedger = records(s).ledger;
-          break;
-        }
-        if (command === "dispute") {
-          require(actor.admin ||
-            actor.userId === m.refereeId ||
-            [m.teamA, m.teamB].some((id) => {
-              const t = get(s.teams, id);
-              return (
-                t.members.includes(actor.userId) &&
-                [t.captainId, t.viceId].includes(actor.userId)
-              );
-            }), "FORBIDDEN", "경기 대표·담당 심판·운영진만 이의를 등록할 수 있어요.");
+        case "requestEligibility": {
           s.issues.push({
             id: ctx.id(),
-            type: "match",
-            matchId: m.id,
+            type: "eligibility",
             reporterId: actor.userId,
             message: text(args.message, 1000),
             status: "open",
             createdAt: ctx.now,
           });
-          m.status = "review";
-          m.confirmations = {};
-          enqueue(s, ctx, "dispute", "admins", m.id);
+          enqueue(s, ctx, "eligibility", "admins", actor.userId);
           break;
         }
-        const t = lead(s, actor, args.teamId);
-        require([m.teamA, m.teamB].includes(
-          t.id,
-        ), "FORBIDDEN", "본인 팀의 경기 기록만 입력할 수 있어요.");
-        if (command === "setRoster") {
-          require(m.startsAt >
-            ctx.now, "ROSTER_CLOSED", "경기 전 명단만 수정할 수 있어요.");
-          m.rosters[t.id] = validRoster(s, t, args.roster, m);
+        case "createTeam":
+        case "resubmitTeam": {
+          require(!teamOf(
+            s,
+            actor.userId,
+          ), "ALREADY_MEMBER", "기존 팀에서 먼저 탈퇴해 주세요.");
+          const draft =
+            command === "resubmitTeam" ? get(s.teams, args.teamId) : null;
+          if (draft)
+            require(draft.requesterId === actor.userId &&
+              draft.status ===
+                "needs_changes", "FORBIDDEN", "본인의 보완 요청 신청만 수정할 수 있어요.");
+          require(!s.teams.some(
+            (t) =>
+              t.id !== draft?.id &&
+              t.requesterId === actor.userId &&
+              ["pending", "needs_changes"].includes(t.status),
+          ), "APPLICATION_EXISTS", "이미 신청한 팀을 확인하거나 보완해 주세요.");
+          const ids = list(args.members);
+          require(ids.length >= 6 &&
+            ids.length <=
+              20, "TEAM_SIZE", "등록 선수 6~20명으로 신청해 주세요.");
+          require(ids.includes(actor.userId) &&
+            ids.includes(args.captainId) &&
+            ids.includes(args.viceId) &&
+            args.captainId !== args.viceId &&
+            [args.captainId, args.viceId].includes(
+              actor.userId,
+            ), "INVALID_LEADERS", "신청자는 대표여야 하며 주장·부주장은 서로 다른 팀원이어야 해요.");
+          ids.forEach((id) => {
+            get(s.players, id);
+            require(!teamOf(
+              s,
+              id,
+            ), "ALREADY_MEMBER", "이미 소속 팀이 있는 선수가 있어요.");
+          });
+          const name = text(args.name, 50);
+          require(!s.teams.some(
+            (t) => t.name === name && t.id !== draft?.id,
+          ), "DUPLICATE_TEAM", "같은 이름의 팀이 있어요.");
+          entityId = draft?.id || ctx.id();
+          const application = {
+            id: entityId,
+            name,
+            description: text(args.description, 500),
+            members: [],
+            pendingMembers: [...ids],
+            captainId: args.captainId,
+            viceId: args.viceId,
+            recruiting: false,
+            status: "pending",
+            requesterId: actor.userId,
+            createdAt: ctx.now,
+          };
+          if (draft) Object.assign(draft, application);
+          else s.teams.push(application);
+          enqueue(s, ctx, "teamApplication", "admins", entityId);
           break;
         }
-        if (command === "confirmExternalReferee") {
-          require(m.externalReferee &&
-            !m.externalReferee.accepted &&
-            m.startsAt >
-              ctx.now, "INVALID_STATE", "외부 심판 수락 대기 중인 예정 경기만 확인할 수 있어요.");
-          require(args.accepted ===
-            true, "EXTERNAL_CONFIRMATION_REQUIRED", "외부 심판의 일정 수락을 확인해 주세요.");
-          m.externalReferee.accepted = true;
-          m.status = "scheduled";
-          break;
-        }
-        if (command === "requestReferees") {
-          require(!m.refereeId &&
-            !m.externalReferee &&
-            m.startsAt >
-              ctx.now, "INVALID_STATE", "심판 배정 전 경기만 추가 요청할 수 있어요.");
-          const candidates = list(args.refereeIds);
-          require(candidates.length >
-            0, "REFEREE_REQUIRED", "새 심판 후보를 선택해 주세요.");
-          for (const id of candidates) {
-            require(neutral(s, id, m) &&
-              !m.refereeRequests.some(
-                (r) => r.playerId === id,
-              ), "NON_NEUTRAL_REFEREE", "새로운 중립 심판을 선택해 주세요.");
-            m.refereeRequests.push({
-              playerId: id,
-              status: "pending",
-              scheduleVersion: m.scheduleVersion,
-            });
-            enqueue(s, ctx, "refereeRequest", [id], m.id);
+        case "reviewTeam": {
+          admin(actor);
+          const t = get(s.teams, args.teamId);
+          require(t.status ===
+            "pending", "INVALID_STATE", "승인 대기 신청이 아니에요.");
+          entityId = t.id;
+          if (args.approve) {
+            require(t.pendingMembers.length >= 6 &&
+              t.pendingMembers.length <=
+                20, "TEAM_SIZE", "팀 인원을 확인해 주세요.");
+            t.pendingMembers.forEach((id) =>
+              require(member(s, id) &&
+                !teamOf(
+                  s,
+                  id,
+                ), "ALREADY_MEMBER", "현재 소속이 변경된 선수가 있어요."),
+            );
+            t.members = [...t.pendingMembers];
+            t.status = "active";
+            for (const id of t.members)
+              s.memberships.push({
+                playerId: id,
+                teamId: t.id,
+                joinedAt: ctx.now,
+                leftAt: null,
+              });
+          } else {
+            t.status = "needs_changes";
+            t.reviewNote = text(args.reason, 1000);
           }
           break;
         }
-        require(m.refereeId ||
-          m.externalReferee
-            ?.accepted, "REFEREE_REQUIRED", "심판 배정 후 공식 경기 결과를 등록할 수 있어요.");
-        require(m.startsAt + 45 * 60000 <=
-          ctx.now, "MATCH_NOT_FINISHED", "경기 종료 후 결과를 입력해 주세요.");
-        if (command === "confirmResult") {
-          require(m.submissions[
-            t.id
-          ], "RESULT_MISSING", "본인 팀 결과를 먼저 제출해 주세요.");
-          m.confirmations[t.id] = m.version;
+        case "updateTeam": {
+          const t = lead(s, actor, args.teamId);
+          entityId = t.id;
+          t.description = text(args.description, 500);
+          t.recruiting = args.recruiting === true;
+          if (args.image !== undefined) {
+            require(args.image === null ||
+              ctx.validateImage(
+                args.image,
+              ), "INVALID_IMAGE", "JPG·PNG·WebP 이미지와 크기를 확인해 주세요.");
+            t.image = args.image;
+          }
+          break;
+        }
+        case "joinRequest": {
+          require(!teamOf(
+            s,
+            p.id,
+          ), "ALREADY_MEMBER", "기존 팀에서 먼저 탈퇴해 주세요.");
+          const t = get(s.teams, args.teamId);
+          require(["active", "paused"].includes(
+            t.status,
+          ), "INVALID_STATE", "가입 문의를 받는 팀이 아니에요.");
+          require(!s.requests.some(
+            (r) =>
+              r.type === "join" &&
+              r.playerId === p.id &&
+              r.teamId === t.id &&
+              r.status === "pending",
+          ), "ALREADY_REQUESTED", "이미 가입 요청을 보냈어요.");
+          s.requests.push({
+            id: ctx.id(),
+            type: "join",
+            teamId: t.id,
+            playerId: p.id,
+            message: text(args.message, 500),
+            status: "pending",
+            createdAt: ctx.now,
+          });
+          break;
+        }
+        case "recruit": {
+          const t = lead(s, actor, args.teamId),
+            id = text(args.playerId);
+          get(s.players, id);
+          require(["active", "paused"].includes(
+            t.status,
+          ), "INVALID_STATE", "충원이 가능한 팀이 아니에요.");
+          require(!teamOf(
+            s,
+            id,
+          ), "ALREADY_MEMBER", "이미 소속 팀이 있는 선수예요.");
+          require(t.members.length < 20, "TEAM_FULL", "팀 정원은 20명이에요.");
+          require(!s.matches.some(
+            (m) =>
+              m.refereeId === id &&
+              m.startsAt > ctx.now &&
+              m.status !== "final" &&
+              [m.teamA, m.teamB].includes(t.id),
+          ), "REFEREE_CONFLICT", "이 팀의 예정 경기 심판으로 배정된 선수예요.");
+          t.members.push(id);
+          s.memberships.push({
+            playerId: id,
+            teamId: t.id,
+            joinedAt: ctx.now,
+            leftAt: null,
+          });
+          s.requests
+            .filter(
+              (r) =>
+                r.type === "join" &&
+                r.playerId === id &&
+                r.status === "pending",
+            )
+            .forEach(
+              (r) => (r.status = r.teamId === t.id ? "accepted" : "closed"),
+            );
+          entityId = t.id;
+          break;
+        }
+        case "release":
+        case "leaveTeam": {
+          const t =
+            command === "release"
+              ? lead(s, actor, args.teamId)
+              : teamOf(s, actor.userId);
+          require(t, "NOT_MEMBER", "현재 소속 팀이 없어요.");
+          const id = command === "release" ? args.playerId : actor.userId;
+          require(t.members.includes(
+            id,
+          ), "NOT_MEMBER", "이 팀 소속 선수가 아니에요.");
+          t.members = t.members.filter((x) => x !== id);
+          if (t.captainId === id) t.captainId = null;
+          if (t.viceId === id) t.viceId = null;
+          s.memberships
+            .filter(
+              (h) =>
+                h.teamId === t.id && h.playerId === id && h.leftAt === null,
+            )
+            .forEach((h) => (h.leftAt = ctx.now));
+          entityId = t.id;
+          break;
+        }
+        case "requestLeaders": {
+          const t = lead(s, actor, args.teamId);
+          require(t.members.includes(args.captainId) &&
+            t.members.includes(args.viceId) &&
+            args.captainId !==
+              args.viceId, "INVALID_LEADERS", "현재 팀원 중 서로 다른 두 사람을 선택해 주세요.");
+          require(!s.requests.some(
+            (r) =>
+              r.type === "leaders" &&
+              r.teamId === t.id &&
+              r.status === "pending",
+          ), "ALREADY_REQUESTED", "대표 교체 승인 대기 중이에요.");
+          s.requests.push({
+            id: ctx.id(),
+            type: "leaders",
+            teamId: t.id,
+            requesterId: actor.userId,
+            captainId: args.captainId,
+            viceId: args.viceId,
+            status: "pending",
+            createdAt: ctx.now,
+          });
+          break;
+        }
+        case "reviewLeaders": {
+          admin(actor);
+          const r = get(s.requests, args.requestId),
+            t = get(s.teams, r.teamId);
+          require(r.type === "leaders" &&
+            r.status ===
+              "pending", "INVALID_STATE", "승인 대기 요청이 아니에요.");
+          if (args.approve) {
+            require(t.members.includes(r.captainId) &&
+              t.members.includes(r.viceId) &&
+              r.captainId !==
+                r.viceId, "INVALID_LEADERS", "후보의 현재 소속을 다시 확인해 주세요.");
+            t.captainId = r.captainId;
+            t.viceId = r.viceId;
+            r.status = "accepted";
+          } else {
+            r.status = "needs_changes";
+            r.reason = text(args.reason, 1000);
+          }
+          entityId = t.id;
+          break;
+        }
+        case "schedule": {
+          const t = lead(s, actor, args.teamId),
+            other = get(s.teams, args.opponentId);
+          require(t.id !== other.id &&
+            t.status === "active" &&
+            other.status ===
+              "active", "INACTIVE_TEAM", "활동 중인 서로 다른 팀을 선택해 주세요.");
+          require(s.settings
+            .seasonOpen, "SEASON_CLOSED", "시즌 일정이 아직 열리지 않았어요.");
+          const startsAt = Number(args.startsAt);
+          require(Number.isFinite(startsAt) &&
+            startsAt >
+              ctx.now, "INVALID_DATE", "미래의 경기 일시를 입력해 주세요.");
+          const m = {
+            id: ctx.id(),
+            seasonId: s.settings.seasonId,
+            teamA: t.id,
+            teamB: other.id,
+            startsAt,
+            place: text(args.place, 120),
+            version: 1,
+            scheduleVersion: 1,
+            scheduleConfirmations: { [t.id]: 1 },
+            clockMode: "running",
+            refereeCount: 1,
+            rosters: {},
+            refereeRequests: [],
+            refereeId: null,
+            externalReferee: null,
+            submissions: {},
+            confirmations: {},
+            history: [],
+            status: "awaiting_referee",
+            createdAt: ctx.now,
+          };
+          require(!s.matches.some(
+            (x) =>
+              !LeaguePolicies.closed(x) &&
+              x.startsAt === startsAt &&
+              [x.teamA, x.teamB].includes(t.id) &&
+              [x.teamA, x.teamB].includes(other.id),
+          ), "DUPLICATE_MATCH", "이미 같은 대진과 일시의 경기가 있어요.");
+          m.rosters[t.id] = validRoster(s, t, args.roster, m);
+          if (args.replayOf) {
+            const previous = get(s.matches, args.replayOf);
+            require(previous.allowReplay &&
+              [previous.teamA, previous.teamB].includes(t.id) &&
+              [previous.teamA, previous.teamB].includes(other.id) &&
+              !s.matches.some(
+                (x) => x.replayOf === previous.id && !LeaguePolicies.closed(x),
+              ), "INVALID_STATE", "재경기 대상과 기존 일정을 확인해 주세요.");
+            m.replayOf = previous.id;
+          }
+          if (args.externalReferee) {
+            m.externalReferee = {
+              name: text(args.externalReferee.name, 60),
+              accepted: args.externalReferee.accepted === true,
+            };
+            if (m.externalReferee.accepted) m.status = "scheduled";
+          } else {
+            list(args.refereeIds);
+            require(args.refereeIds.length >
+              0, "REFEREE_REQUIRED", "심판 후보를 한 명 이상 선택해 주세요.");
+            for (const id of args.refereeIds) {
+              require(neutral(
+                s,
+                id,
+                m,
+              ), "NON_NEUTRAL_REFEREE", "양 팀 소속이 아닌 심판을 선택해 주세요.");
+              m.refereeRequests.push({
+                playerId: id,
+                status: "pending",
+                scheduleVersion: 1,
+              });
+              enqueue(s, ctx, "refereeRequest", [id], m.id);
+            }
+          }
+          LeaguePolicies.scheduleStatus(m);
+          s.matches.push(m);
+          entityId = m.id;
+          break;
+        }
+        case "setRoster":
+        case "confirmExternalReferee":
+        case "requestReferees":
+        case "acceptReferee":
+        case "declineReferee":
+        case "submitResult":
+        case "confirmResult":
+        case "dispute":
+        case "finalize": {
+          const m = get(s.matches, args.matchId);
+          entityId = m.id;
+          require(m.status !==
+            "final", "FINAL_IMMUTABLE", "확정 기록의 정정은 운영진 정책 확정 후 처리해요.");
+          require(!LeaguePolicies.closed(
+            m,
+          ), "INVALID_STATE", "취소·중단·몰수 처리된 경기예요.");
+          require(args.matchVersion ===
+            m.version, "STALE_MATCH", "경기 기록이 변경됐어요. 최신 기록을 확인해 주세요.");
+          if (command === "acceptReferee" || command === "declineReferee") {
+            const r = m.refereeRequests.find(
+              (r) =>
+                r.playerId === actor.userId &&
+                r.status === "pending" &&
+                r.scheduleVersion === m.scheduleVersion,
+            );
+            require(r &&
+              !m.refereeId, "REFEREE_ASSIGNED", "이미 다른 심판이 배정됐거나 종료된 요청이에요.");
+            if (command === "declineReferee") {
+              r.status = "declined";
+              break;
+            }
+            require(m.startsAt > ctx.now &&
+              neutral(
+                s,
+                actor.userId,
+                m,
+              ), "NON_NEUTRAL_REFEREE", "현재 양 팀 소속이 아닌 심판만 수락할 수 있어요.");
+            require(!s.matches.some(
+              (x) =>
+                x.id !== m.id &&
+                !LeaguePolicies.closed(x) &&
+                x.refereeId === actor.userId &&
+                Math.abs(x.startsAt - m.startsAt) < 45 * 60000,
+            ), "REFEREE_CONFLICT", "같은 시간대에 배정된 경기가 있어요.");
+            m.refereeId = actor.userId;
+            r.status = "accepted";
+            m.refereeRequests
+              .filter((x) => x !== r && x.status === "pending")
+              .forEach((x) => (x.status = "closed"));
+            m.status = "scheduled";
+            LeaguePolicies.scheduleStatus(m);
+            break;
+          }
+          if (command === "finalize") {
+            require(m.status ===
+              "ready", "RESULT_NOT_READY", "양 팀 확인·스코어 일치와 이의 해결이 필요해요.");
+            if (m.externalReferee) {
+              admin(actor);
+              require(m.externalReferee.accepted &&
+                args.externalConfirmed ===
+                  true, "EXTERNAL_CONFIRMATION_REQUIRED", "외부 심판 진행 여부를 확인해 주세요.");
+            } else
+              require(m.refereeId === actor.userId &&
+                neutral(
+                  s,
+                  actor.userId,
+                  m,
+                ), "FORBIDDEN", "배정된 중립 심판만 최종 승인할 수 있어요.");
+            m.status = "final";
+            m.finalizedAt = ctx.now;
+            m.finalizedBy = actor.userId;
+            m.finalizedVersion = m.version;
+            delete m.officialRecord;
+            delete m.correctionOpen;
+            LeaguePolicies.finalized(s, m, ctx);
+            s.ratingLedger = records(s).ledger;
+            break;
+          }
+          if (command === "dispute") {
+            require(actor.admin ||
+              actor.userId === m.refereeId ||
+              [m.teamA, m.teamB].some((id) => {
+                const t = get(s.teams, id);
+                return (
+                  t.members.includes(actor.userId) &&
+                  [t.captainId, t.viceId].includes(actor.userId)
+                );
+              }), "FORBIDDEN", "경기 대표·담당 심판·운영진만 이의를 등록할 수 있어요.");
+            s.issues.push({
+              id: ctx.id(),
+              type: "match",
+              matchId: m.id,
+              reporterId: actor.userId,
+              message: text(args.message, 1000),
+              status: "open",
+              createdAt: ctx.now,
+            });
+            m.status = "review";
+            m.confirmations = {};
+            enqueue(s, ctx, "dispute", "admins", m.id);
+            break;
+          }
+          const t = lead(s, actor, args.teamId);
+          require([m.teamA, m.teamB].includes(
+            t.id,
+          ), "FORBIDDEN", "본인 팀의 경기 기록만 입력할 수 있어요.");
+          if (command === "setRoster") {
+            require(m.startsAt >
+              ctx.now, "ROSTER_CLOSED", "경기 전 명단만 수정할 수 있어요.");
+            m.rosters[t.id] = validRoster(s, t, args.roster, m);
+            if (m.scheduleConfirmations)
+              m.scheduleConfirmations[t.id] = m.scheduleVersion;
+            LeaguePolicies.scheduleStatus(m);
+            break;
+          }
+          if (command === "confirmExternalReferee") {
+            require(m.externalReferee &&
+              !m.externalReferee.accepted &&
+              m.startsAt >
+                ctx.now, "INVALID_STATE", "외부 심판 수락 대기 중인 예정 경기만 확인할 수 있어요.");
+            require(args.accepted ===
+              true, "EXTERNAL_CONFIRMATION_REQUIRED", "외부 심판의 일정 수락을 확인해 주세요.");
+            m.externalReferee.accepted = true;
+            m.status = "scheduled";
+            LeaguePolicies.scheduleStatus(m);
+            break;
+          }
+          if (command === "requestReferees") {
+            require(!m.refereeId &&
+              !m.externalReferee &&
+              m.startsAt >
+                ctx.now, "INVALID_STATE", "심판 배정 전 경기만 추가 요청할 수 있어요.");
+            const candidates = list(args.refereeIds);
+            require(candidates.length >
+              0, "REFEREE_REQUIRED", "새 심판 후보를 선택해 주세요.");
+            for (const id of candidates) {
+              require(neutral(s, id, m) &&
+                !m.refereeRequests.some(
+                  (r) => r.playerId === id,
+                ), "NON_NEUTRAL_REFEREE", "새로운 중립 심판을 선택해 주세요.");
+              m.refereeRequests.push({
+                playerId: id,
+                status: "pending",
+                scheduleVersion: m.scheduleVersion,
+              });
+              enqueue(s, ctx, "refereeRequest", [id], m.id);
+            }
+            break;
+          }
+          require(m.refereeId ||
+            m.externalReferee
+              ?.accepted, "REFEREE_REQUIRED", "심판 배정 후 공식 경기 결과를 등록할 수 있어요.");
+          require(m.startsAt + 45 * 60000 <=
+            ctx.now, "MATCH_NOT_FINISHED", "경기 종료 후 결과를 입력해 주세요.");
+          if (command === "confirmResult") {
+            require(m.submissions[
+              t.id
+            ], "RESULT_MISSING", "본인 팀 결과를 먼저 제출해 주세요.");
+            m.confirmations[t.id] = m.version;
+            updateMatchState(s, m, ctx);
+            break;
+          }
+          require(args.confirmed ===
+            true, "CONFIRMATION_REQUIRED", "우리 팀 기록을 확인한 뒤 제출해 주세요.");
+          const score = {
+            a: number(args.score.a),
+            b: number(args.score.b),
+            pkA: null,
+            pkB: null,
+          };
+          if (score.a === score.b) {
+            score.pkA = number(args.score.pkA);
+            score.pkB = number(args.score.pkB);
+            require(score.pkA !==
+              score.pkB, "INVALID_SCORE", "승부차기 승자를 기록해 주세요.");
+          }
+          require(m.rosters[m.teamA]?.length >= 5 &&
+            m.rosters[m.teamB]?.length >= 5 &&
+            (!m.scheduleConfirmations ||
+              [m.teamA, m.teamB].every(
+                (id) => m.scheduleConfirmations[id] === m.scheduleVersion,
+              )), "ROSTER_MISSING", "양 팀의 일정 확인과 사전 명단을 먼저 등록해 주세요.");
+          const players = validRoster(s, t, args.roster, m),
+            goals = {};
+          require(players.every((p) =>
+            m.rosters[t.id].some((x) => x.id === p.id),
+          ), "ROSTER_CLOSED", "실제 출전자는 킥오프 전 사전 명단 안에서 선택해 주세요.");
+          let sum = 0;
+          require(args.goals &&
+            typeof args.goals === "object" &&
+            !Array.isArray(
+              args.goals,
+            ), "INVALID_SCORE", "본인 팀 득점 기록을 입력해 주세요.");
+          for (const [id, value] of Object.entries(args.goals)) {
+            require(players.some(
+              (p) => p.id === id,
+            ), "INVALID_SCORER", "실제 출전 선수만 득점자로 기록할 수 있어요.");
+            goals[id] = number(value);
+            sum += value;
+          }
+          require(sum <=
+            (t.id === m.teamA
+              ? score.a
+              : score.b), "GOAL_TOTAL", "개인 득점 합계가 팀 스코어를 초과할 수 없어요.");
+          const ownGoals = {};
+          require(!args.ownGoals ||
+            (typeof args.ownGoals === "object" &&
+              !Array.isArray(
+                args.ownGoals,
+              )), "INVALID_SCORE", "자책골 기록을 확인해 주세요.");
+          for (const [id, value] of Object.entries(args.ownGoals || {})) {
+            require(players.some(
+              (p) => p.id === id,
+            ), "INVALID_SCORER", "우리 팀 실제 출전자의 자책골만 기록해 주세요.");
+            ownGoals[id] = number(value);
+          }
+          require(Object.values(ownGoals).reduce((n, v) => n + v, 0) <=
+            (t.id === m.teamA
+              ? score.b
+              : score.a), "GOAL_TOTAL", "자책골 합계가 상대 스코어를 초과할 수 없어요.");
+          const redCards = list(args.redCards || []);
+          require(redCards.every((id) =>
+            players.some((p) => p.id === id),
+          ), "INVALID_SCORER", "우리 팀 실제 출전자의 퇴장만 기록해 주세요.");
+          m.history.push({
+            version: m.version,
+            submissions: copy(m.submissions),
+            confirmations: copy(m.confirmations),
+            changedAt: ctx.now,
+            changedBy: actor.userId,
+          });
+          m.version++;
+          m.submissions[t.id] = {
+            score,
+            players,
+            goals,
+            ownGoals,
+            redCards,
+            submittedBy: actor.userId,
+            submittedAt: ctx.now,
+          };
+          m.confirmations = { [t.id]: m.version };
           updateMatchState(s, m, ctx);
           break;
         }
-        require(args.confirmed ===
-          true, "CONFIRMATION_REQUIRED", "우리 팀 기록을 확인한 뒤 제출해 주세요.");
-        const score = {
-          a: number(args.score.a),
-          b: number(args.score.b),
-          pkA: null,
-          pkB: null,
-        };
-        if (score.a === score.b) {
-          score.pkA = number(args.score.pkA);
-          score.pkB = number(args.score.pkB);
-          require(score.pkA !==
-            score.pkB, "INVALID_SCORE", "승부차기 승자를 기록해 주세요.");
+        case "resolveIssue": {
+          admin(actor);
+          const i = get(s.issues, args.issueId);
+          require(i.status ===
+            "open", "INVALID_STATE", "이미 처리한 이의예요.");
+          i.status = "resolved";
+          i.resolution = text(args.reason, 1000);
+          i.resolvedBy = actor.userId;
+          i.resolvedAt = ctx.now;
+          if (i.matchId && get(s.matches, i.matchId).status !== "final") {
+            const m = get(s.matches, i.matchId);
+            m.version++;
+            m.confirmations = {};
+            updateMatchState(s, m, ctx);
+          }
+          entityId = i.id;
+          break;
         }
-        require(m.rosters[m.teamA]?.length >= 5 &&
-          m.rosters[m.teamB]?.length >=
-            5, "ROSTER_MISSING", "양 팀의 사전 명단을 먼저 등록해 주세요.");
-        const players = validRoster(s, t, args.roster, m),
-          goals = {};
-        let sum = 0;
-        require(args.goals &&
-          typeof args.goals === "object" &&
-          !Array.isArray(
-            args.goals,
-          ), "INVALID_SCORE", "본인 팀 득점 기록을 입력해 주세요.");
-        for (const [id, value] of Object.entries(args.goals)) {
-          require(players.some(
-            (p) => p.id === id,
-          ), "INVALID_SCORER", "실제 출전 선수만 득점자로 기록할 수 있어요.");
-          goals[id] = number(value);
-          sum += value;
-        }
-        require(sum ===
-          (t.id === m.teamA
-            ? score.a
-            : score.b), "GOAL_TOTAL", "본인 팀 선수 득점 합계와 팀 스코어가 일치해야 해요. 자책골 등 예외는 운영진에게 문의해 주세요.");
-        m.history.push({
-          version: m.version,
-          submissions: copy(m.submissions),
-          confirmations: copy(m.confirmations),
-          changedAt: ctx.now,
-          changedBy: actor.userId,
-        });
-        m.version++;
-        m.submissions[t.id] = {
-          score,
-          players,
-          goals,
-          submittedBy: actor.userId,
-          submittedAt: ctx.now,
-        };
-        m.confirmations = { [t.id]: m.version };
-        updateMatchState(s, m, ctx);
-        break;
-      }
-      case "resolveIssue": {
-        admin(actor);
-        const i = get(s.issues, args.issueId);
-        require(i.status === "open", "INVALID_STATE", "이미 처리한 이의예요.");
-        i.status = "resolved";
-        i.resolution = text(args.reason, 1000);
-        i.resolvedBy = actor.userId;
-        i.resolvedAt = ctx.now;
-        if (i.matchId) {
-          const m = get(s.matches, i.matchId);
+        case "requestCorrection": {
+          admin(actor);
+          const m = get(s.matches, args.matchId);
+          require(m.status !==
+            "final", "FINAL_IMMUTABLE", "확정 후 정정 세칙이 필요해요.");
+          m.history.push({
+            version: m.version,
+            submissions: copy(m.submissions),
+            confirmations: copy(m.confirmations),
+            note: text(args.reason, 1000),
+            changedAt: ctx.now,
+            changedBy: actor.userId,
+          });
           m.version++;
           m.confirmations = {};
           updateMatchState(s, m, ctx);
+          entityId = m.id;
+          break;
         }
-        entityId = i.id;
-        break;
+        default:
+          error("UNKNOWN_COMMAND", "지원하지 않는 요청이에요.");
       }
-      case "requestCorrection": {
-        admin(actor);
-        const m = get(s.matches, args.matchId);
-        require(m.status !==
-          "final", "FINAL_IMMUTABLE", "확정 후 정정 세칙이 필요해요.");
-        m.history.push({
-          version: m.version,
-          submissions: copy(m.submissions),
-          confirmations: copy(m.confirmations),
-          note: text(args.reason, 1000),
-          changedAt: ctx.now,
-          changedBy: actor.userId,
-        });
-        m.version++;
-        m.confirmations = {};
-        updateMatchState(s, m, ctx);
-        entityId = m.id;
-        break;
-      }
-      default:
-        error("UNKNOWN_COMMAND", "지원하지 않는 요청이에요.");
-    }
     maintain(s, ctx.now);
     s.revision++;
     s.audit.push({
       id: ctx.id(),
-      actorId: actor.userId,
+      actorId: command === "withdrawAccount" ? null : actor.userId,
       command,
       entityId,
       at: ctx.now,
       revision: s.revision,
     });
-    return { entityId, revision: s.revision };
+    return {
+      entityId,
+      revision: s.revision,
+      ...(command === "withdrawAccount" ? { withdrawn: true } : {}),
+    };
   }
   function execute(state, actor, command, args, ctx) {
     const next = copy(state);
+    LeaguePolicies.upgrade(next);
     const result = apply(next, actor, command, args, ctx);
     return { state: next, result };
   }
-  return { createState, publicView, privateView, execute, maintain, records };
+  return {
+    createState,
+    publicView,
+    privateView,
+    execute,
+    maintain,
+    records,
+    policies: LeaguePolicies,
+  };
 })();

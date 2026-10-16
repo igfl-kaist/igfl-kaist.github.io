@@ -2,8 +2,13 @@ function leagueSettings_() {
   const p = PropertiesService.getScriptProperties();
   return {
     registrationOpen: p.getProperty("LEAGUE_REGISTRATION_OPEN") === "true",
-    privacyVersion: p.getProperty("PRIVACY_VERSION") || "",
-    privacyNotice: p.getProperty("PRIVACY_NOTICE") || "",
+    privacyVersion: p.getProperty("PRIVACY_VERSION") || "igfl-2026-10-16-v1",
+    privacyNotice:
+      p.getProperty("PRIVACY_NOTICE") || League.policies.settings.privacyNotice,
+    publicConsentVersion: League.policies.settings.publicConsentVersion,
+    publicConsentNotice: League.policies.settings.publicConsentNotice,
+    operationsContact: p.getProperty("OPERATIONS_CONTACT") || "",
+    seasonEndsAt: Number(p.getProperty("LEAGUE_SEASON_ENDS_AT")) || null,
     seasonId: p.getProperty("LEAGUE_SEASON_ID") || "pilot",
     seasonName: p.getProperty("LEAGUE_SEASON_NAME") || "시즌 준비",
     seasonOpen: p.getProperty("LEAGUE_SEASON_OPEN") === "true",
@@ -70,11 +75,13 @@ function leagueActor_(config, input) {
 function leagueApi_(input) {
   const config = config_();
   return locked_(() => {
+    completeAccountErasure_(config);
     let state = loadLeague_(config);
     const actor = leagueActor_(config, input);
     if (League.maintain(state, Date.now())) {
       state.revision++;
       saveLeague_(config, state);
+      compactLeagueSnapshots_(config);
     }
     if (input.operation === "view") return League.privateView(state, actor);
     if (input.operation === "command") {
@@ -85,10 +92,73 @@ function leagueApi_(input) {
         validateImage: (data) =>
           validateTeamImage(data, (base64) => Utilities.base64Decode(base64)),
       });
+      if (out.result.withdrawn)
+        PropertiesService.getScriptProperties().setProperty(
+          "PENDING_ACCOUNT_ERASURE",
+          JSON.stringify({ userId: actor.userId, email: actor.email }),
+        );
       saveLeague_(config, out.state);
+      if (out.result.withdrawn) completeAccountErasure_(config);
       return out.result;
     }
     fail_("BAD_REQUEST");
+  });
+}
+function compactLeagueSnapshots_(config) {
+  const pointer = JSON.parse(
+    PropertiesService.getScriptProperties().getProperty(
+      "LEAGUE_ACTIVE_SNAPSHOT",
+    ),
+  );
+  const sheet = table_(config, "LeagueSnapshots");
+  if (pointer.row > 2) sheet.getRange(2, 1, pointer.row - 2, 1).clearContent();
+  const tail = pointer.row + pointer.count,
+    last = sheet.getLastRow();
+  if (last >= tail) sheet.getRange(tail, 1, last - tail + 1, 1).clearContent();
+  SpreadsheetApp.flush();
+}
+function completeAccountErasure_(config) {
+  const p = PropertiesService.getScriptProperties(),
+    raw = p.getProperty("PENDING_ACCOUNT_ERASURE");
+  if (!raw) return;
+  const task = JSON.parse(raw),
+    state = loadLeague_(config);
+  League.policies.upgrade(state);
+  League.policies.erase(state, task.userId);
+  state.revision++;
+  saveLeague_(config, state);
+  eraseAuthAccount_(config, task.userId, task.email);
+  compactLeagueSnapshots_(config);
+  p.deleteProperty("PENDING_ACCOUNT_ERASURE");
+}
+// Owner may attach a time trigger. Does not open registration or send mail.
+function runPrivacyMaintenance() {
+  locked_(() => {
+    const config = config_();
+    completeAccountErasure_(config);
+    prune_(config, Date.now());
+    const state = loadLeague_(config);
+    if (League.maintain(state, Date.now())) {
+      state.revision++;
+      saveLeague_(config, state);
+    }
+    const registered = new Set(state.profiles.map((p) => p.id));
+    (
+      PropertiesService.getScriptProperties().getProperty(
+        "LEAGUE_ADMIN_USER_IDS",
+      ) || ""
+    )
+      .split(",")
+      .filter(Boolean)
+      .forEach((id) => registered.add(id));
+    const rows = read_(config, "Accounts");
+    for (let i = rows.length - 1; i >= 0; i--)
+      if (
+        !registered.has(rows[i].value.userId) &&
+        rows[i].value.lastSeenAt < Date.now() - 86400000
+      )
+        table_(config, "Accounts").deleteRow(rows[i].row);
+    compactLeagueSnapshots_(config);
   });
 }
 function initializeLeagueStorage() {
@@ -157,6 +227,10 @@ function processLeagueEmails() {
             dispute: "경기 이의 제기",
             scoreMismatch: "경기 스코어 불일치",
             externalApproval: "외부 심판 경기 승인 대기",
+            matchIncident: "경기 예외 보고",
+            resultOverdue: "경기 결과 제출·확인 지연",
+            approvalOverdue: "경기 최종 승인 지연",
+            teamVacancy: "회원 탈퇴로 인한 팀 대표 공석",
           }[job.kind] || "운영 알림"),
         body:
           "홈페이지에서 요청 내용을 확인해 주세요.\n" +

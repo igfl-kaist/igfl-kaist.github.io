@@ -788,3 +788,77 @@ details p {
     width: 180px;
   }
 }
+
+.team-card > a {
+  display: block;
+  height: 100%;
+}
+.team-card {
+  display: flex;
+  flex-direction: column;
+}
+.team-card-action {
+  padding: 0 24px 22px;
+  margin-top: auto;
+}
+.team-card-action .button {
+  width: 100%;
+}
+.invitation-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.invitation-item h3 {
+  font-size: 17px;
+  margin: 12px 0 6px;
+}
+.invitation-item .actions {
+  margin-top: 0;
+}
+.invitation-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.notification-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.roster-scores {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.roster-scores .check-line {
+  margin: 0;
+  white-space: nowrap;
+}
+.consent-box p {
+  white-space: pre-line;
+}
+@media (max-width: 760px) {
+  .invitation-item {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .roster-row {
+    flex-wrap: wrap;
+  }
+  .roster-scores {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 14px;
+  }
+  .team-card-action {
+    padding: 0 20px 20px;
+  }
+}
