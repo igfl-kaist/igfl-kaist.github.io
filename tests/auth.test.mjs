@@ -8,7 +8,7 @@ import { createAuthClient, validateEndpoint } from '../src/auth-client.mjs';
 function server() {
   let now = 1800000000000, remaining = 100, sendFails = false, duplicateUuid = false, createdSheets = 0;
   const properties = { AUTH_SECRET: 'a'.repeat(64), AUTH_SHEET_ID: 'test-sheet', PILOT_EMAILS: 'player@kaist.ac.kr' };
-  const tables = { Challenges: [['record_json']], Sessions: [['record_json']] }, mail = [];
+  const tables = { Challenges: [['record_json']], Sessions: [['record_json']] }, mail = [], logs = [];
   function sheet(name) {
     return { getLastRow: () => tables[name].length,
       appendRow: row => tables[name].push(row), deleteRow: row => tables[name].splice(row - 1, 1),
@@ -16,6 +16,7 @@ function server() {
   }
   let held = false;
   const context = vm.createContext({
+    Logger: { log: value => logs.push(value) },
     Date: { now: () => now },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: text => ({ setMimeType: () => JSON.parse(text) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperties: () => ({ ...properties }), getProperty: key => properties[key], setProperty: (key, value) => { properties[key] = value; } }) },
@@ -28,14 +29,41 @@ function server() {
     MailApp: { getRemainingDailyQuota: () => remaining, sendEmail: value => { assert.equal(held, false, 'network mail must run outside lock'); if (sendFails) throw new Error('private provider message'); mail.push(value); remaining--; } }
   });
   vm.runInContext(readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8'), context);
+  vm.runInContext(readFileSync(new URL('../apps-script/OwnerSetup.gs', import.meta.url), 'utf8'), context);
   function call(action, data = {}) {
     const params = { action, ...data };
     return context.doPost({ postData: { type: 'application/x-www-form-urlencoded;charset=UTF-8', length: 100 }, parameter: params, parameters: Object.fromEntries(Object.entries(params).map(([key,value]) => [key,[value]])) });
   }
   const request = (purpose = 'login') => call('requestCode', { email: 'player@kaist.ac.kr', purpose });
   function verification(challenge, overrides = {}) { return call('verifyCode', { email: 'player@kaist.ac.kr', purpose: 'login', challengeId: challenge.data.challengeId, code: mail.at(-1).body.match(/\d{6}/)[0], ...overrides }); }
-  return { call, request, verification, mail, tables, properties, advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; }, initialize:()=>context.initializeAuth_(), duplicateUuid:()=>{duplicateUuid=true;}, createdSheets:()=>createdSheets };
+  return { call, request, verification, mail, tables, properties, logs, inspect:()=>context.inspectRuntimeStatus(), allowKaist:()=>context.allowKaistEmailAuthentication(), advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; }, initialize:()=>context.initializeAuth_(), duplicateUuid:()=>{duplicateUuid=true;}, createdSheets:()=>createdSheets };
 }
+
+test('explicit KAIST mode accepts other school mailboxes while rejecting subdomains and lookalikes', () => {
+ const s=server();s.allowKaist();
+ assert.equal(s.call('health').data.emailScope,'kaist');
+ assert.equal(s.call('health').data.pilot,false);
+ delete s.properties.PILOT_EMAILS;
+ assert.equal(s.call('requestCode',{email:' OTHER@KAIST.AC.KR ',purpose:'login'}).ok,true);
+ assert.equal(s.mail[0].to,'other@kaist.ac.kr');
+ for(const email of ['p@kaist.ac.kr.evil.test','p@comet.kaist.ac.kr','p@gmail.com']) assert.equal(s.call('requestCode',{email,purpose:'login'}).error.code,'INVALID_EMAIL');
+ assert.equal(s.mail.length,1);
+ assert.equal(s.inspect().registrationOpen,false);
+});
+test('unknown or empty allow-list mode fails closed and owner diagnostics send no mail',()=>{
+ const s=server(), status=s.inspect();
+ assert.equal(status.remainingMailRecipients,100);assert.equal(status.authRequestBudgetPer24Hours,50);assert.equal(s.mail.length,0);
+ assert.equal(JSON.stringify(s.logs).includes(s.properties.AUTH_SECRET),false);
+ assert.equal(JSON.stringify(s.logs).includes('player@kaist.ac.kr'),false);
+ delete s.properties.PILOT_EMAILS;assert.equal(s.call('health').error.code,'NOT_CONFIGURED');
+ s.properties.AUTH_EMAIL_SCOPE='kaits';assert.equal(s.call('health').error.code,'NOT_CONFIGURED');
+});
+test('owner authentication scope change cannot silently open player registration',()=>{
+ const s=server();s.properties.LEAGUE_REGISTRATION_OPEN='true';
+ assert.throws(()=>s.allowKaist(),/Close player registration/);
+ assert.equal(s.properties.AUTH_EMAIL_SCOPE,undefined);
+ assert.equal(s.properties.LEAGUE_REGISTRATION_OPEN,'true');assert.equal(s.mail.length,0);
+});
 
 test('owner setup creates a server secret once and refuses reinitialization',()=>{
  const s=server();delete s.properties.AUTH_SECRET;delete s.properties.AUTH_SHEET_ID;

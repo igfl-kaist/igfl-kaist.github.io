@@ -1,5 +1,5 @@
-/* IGFL auth pilot. No passwords, raw OTPs, or raw session tokens are stored. */
-const IGFL_ = Object.freeze({ protocol: 'igfl-auth-v1', version: '0.1.0', codeTtl: 300000, sessionTtl: 43200000, cooldown: 60000, maxAttempts: 5, emailHourly: 5, dailyBudget: 50 });
+/* IGFL email auth. No passwords, raw OTPs, or raw session tokens are stored. */
+const IGFL_ = Object.freeze({ protocol: 'igfl-auth-v1', version: '0.2.0', codeTtl: 300000, sessionTtl: 43200000, cooldown: 60000, maxAttempts: 5, emailHourly: 5, dailyBudget: 50 });
 
 function doGet() { return json_({ ok: true, data: { service: 'IGFL Auth', version: IGFL_.version, method: 'POST' } }); }
 function doPost(event) {
@@ -9,7 +9,7 @@ function doPost(event) {
     if (Object.keys(input).some(key => event.parameters && event.parameters[key].length !== 1)) fail_('BAD_REQUEST');
     let data;
     switch (input.action) {
-      case 'health': config_(); data = { service: 'IGFL Auth', version: IGFL_.version, pilot: true }; break;
+      case 'health': { const config = config_(); data = { service: 'IGFL Auth', version: IGFL_.version, pilot: config.emailScope === 'pilot', emailScope: config.emailScope, allowedDomain: 'kaist.ac.kr' }; break; }
       case 'requestCode': data = requestCode_(input); break;
       case 'verifyCode': data = verifyCode_(input); break;
       case 'session': data = session_(input); break;
@@ -27,8 +27,10 @@ function json_(body) { return ContentService.createTextOutput(JSON.stringify(Obj
 function fail_(code, retry) { const error = new Error('IGFL request failed'); error.igflCode = code; error.retryAfterSeconds = retry; throw error; }
 function config_() {
   const properties = PropertiesService.getScriptProperties().getProperties();
-  if (!/^[a-f0-9]{64}$/i.test(properties.AUTH_SECRET || '') || !properties.AUTH_SHEET_ID || !properties.PILOT_EMAILS) fail_('NOT_CONFIGURED');
-  return { secret: properties.AUTH_SECRET, sheetId: properties.AUTH_SHEET_ID, pilot: properties.PILOT_EMAILS.split(',').map(e => e.trim().toLowerCase()).filter(Boolean) };
+  const emailScope = properties.AUTH_EMAIL_SCOPE || 'pilot';
+  const pilot = (properties.PILOT_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  if (!/^[a-f0-9]{64}$/i.test(properties.AUTH_SECRET || '') || !properties.AUTH_SHEET_ID || !['pilot','kaist'].includes(emailScope) || (emailScope === 'pilot' && !pilot.length)) fail_('NOT_CONFIGURED');
+  return { secret: properties.AUTH_SECRET, sheetId: properties.AUTH_SHEET_ID, emailScope, pilot };
 }
 function normalizeEmail_(value) {
   const email = String(value || '').trim().toLowerCase();
@@ -89,7 +91,7 @@ function prune_(config, now) {
 }
 function requestCode_(input) {
   const config = config_(), email = normalizeEmail_(input.email), purpose = purpose_(input.purpose);
-  if (config.pilot.indexOf(email) < 0) fail_('PILOT_ONLY');
+  if (config.emailScope === 'pilot' && config.pilot.indexOf(email) < 0) fail_('PILOT_ONLY');
   const issued = locked_(() => {
     const now = Date.now();
     prune_(config, now);
