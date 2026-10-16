@@ -46,6 +46,10 @@ selector.onchange = async () => {
     sessionStorage.removeItem("igfl.dev-session");
     sessionStorage.removeItem("igfl.dev-account");
   }
+  if (location.hash !== "#activity") {
+    location.hash = "#activity";
+    return;
+  }
   await render();
 };
 async function render() {
