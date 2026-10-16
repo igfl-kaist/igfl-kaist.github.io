@@ -4,7 +4,7 @@ ISE & GSDS Futsal League. KAIST 이메일 로그인, 선수 등록, 팀 운영, 
 
 2026-10-16 기준 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 자동 테스트 **36개 통과**. 합성 데이터 브라우저에서 양 팀 기록 제출 → 양 팀 확인 → 내부 심판 최종 승인 → 랭킹 갱신을 확인했다. 실제 Apps Script 서버의 공개 리그 조회도 로컬 브라우저에서 연결했다. 실제 이메일 로그인 검증은 [인증 배포 기록](docs/AUTH_DEPLOYMENT.md)에 있다.
 
-**공개 배포 대상:** [IGFL 홈페이지](https://noeyusiohc.github.io/igfl/). 사용자의 최신 지시로 [저장소](https://github.com/noeyusiohc/igfl)를 공개하고 GitHub Actions 기반 Pages를 설정했다. 배포 결과는 Actions 실행과 아래 인증 배포 기록에서 확인한다. 기존 개인 홈페이지는 유지한다.
+**공개 홈페이지:** [IGFL](https://noeyusiohc.github.io/igfl/). 2026-10-16 사용자 승인으로 [저장소](https://github.com/noeyusiohc/igfl)를 공개하고 PR #1을 main에 병합했다. [Pages 배포 실행](https://github.com/noeyusiohc/igfl/actions/runs/38854152477)의 테스트·빌드·배포가 모두 성공했다. 실제 Pages 브라우저에서 소개·랭킹 데이터·인증 서버 health 응답을 확인했다. 기존 개인 홈페이지와 별도 프로젝트 경로를 사용한다.
 
 **리그 운영 개통 전 상태다.** 개인정보 정책이 미정이라 실제 선수 가입은 서버에서 닫혀 있다. 시즌도 닫혀 있고 최초 운영진·알림 수신자·메일 작업은 아직 설정하지 않았다. 공개 홈페이지에는 실제 선수·팀 데이터나 합성 검증 계정 선택기를 넣지 않는다.
 
