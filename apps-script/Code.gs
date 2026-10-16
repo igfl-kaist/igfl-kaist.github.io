@@ -4,7 +4,7 @@ const IGFL_ = Object.freeze({ protocol: 'igfl-auth-v1', version: '0.1.0', codeTt
 function doGet() { return json_({ ok: true, data: { service: 'IGFL Auth', version: IGFL_.version, method: 'POST' } }); }
 function doPost(event) {
   try {
-    if (!event || !event.postData || event.postData.length > 4096 || !/^application\/x-www-form-urlencoded(?:;|$)/i.test(event.postData.type)) fail_('BAD_REQUEST');
+    if (!event || !event.postData || event.postData.length > 900000 || !/^application\/x-www-form-urlencoded(?:;|$)/i.test(event.postData.type)) fail_('BAD_REQUEST');
     const input = event.parameter || {};
     if (Object.keys(input).some(key => event.parameters && event.parameters[key].length !== 1)) fail_('BAD_REQUEST');
     let data;
@@ -14,12 +14,13 @@ function doPost(event) {
       case 'verifyCode': data = verifyCode_(input); break;
       case 'session': data = session_(input); break;
       case 'logout': data = logout_(input); break;
+      case 'league': data = leagueApi_(input); break;
       default: fail_('BAD_REQUEST');
     }
     return json_({ ok: true, data: data });
   } catch (error) {
     // Never return the exception message/stack: provider failures may contain private data.
-    return json_({ ok: false, error: { code: error.igflCode || 'SERVER_ERROR', retryAfterSeconds: error.retryAfterSeconds || undefined } });
+    return json_({ ok: false, error: { code: error.igflCode || 'SERVER_ERROR', message: error.code && error.igflCode === error.code ? error.message : undefined, retryAfterSeconds: error.retryAfterSeconds || undefined } });
   }
 }
 function json_(body) { return ContentService.createTextOutput(JSON.stringify(Object.assign({ protocol: IGFL_.protocol }, body))).setMimeType(ContentService.MimeType.JSON); }
