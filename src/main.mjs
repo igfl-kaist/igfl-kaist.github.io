@@ -76,5 +76,8 @@ function activity(){
  content.querySelector('#logout').addEventListener('click',async event=>{event.target.disabled=true;try{await api('logout',{sessionToken:readToken()});saveToken(null);session=null;location.hash='#home';}catch(error){showError(content.querySelector('#logout-status'),error);event.target.disabled=false;}});
 }
 function render(){clearInterval(ticker);const route=location.hash.slice(1)||'home';document.querySelectorAll('nav a').forEach(a=>{a.setAttribute('aria-current',a.hash===`#${route}`?'page':'false');});accountLink.textContent=session?'내 선수 활동':'로그인 / 선수 등록';accountLink.href=session?'#activity':'#login';({home,ranking:()=>directory('ranking'),teams:()=>directory('teams'),players:()=>directory('players'),login:()=>session?activity():auth(),register:()=>session?activity():auth(true),activity}[route]||home)();window.scrollTo(0,0);}
-if(api&&readToken()){try{session=await api('session',{sessionToken:readToken()});}catch(error){if(error.code==='SESSION_EXPIRED')saveToken(null);}}
+if(api&&readToken()){
+ content.innerHTML='<p class="muted" role="status">로그인 정보를 확인하고 있어요…</p>';
+ try{session=await api('session',{sessionToken:readToken()});}catch(error){if(error.code==='SESSION_EXPIRED')saveToken(null);}
+}
 window.addEventListener('hashchange',render);render();
