@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createAuthClient, validateEndpoint } from '../src/auth-client.mjs';
 
 function server() {
-  let now = 1800000000000, remaining = 100, sendFails = false;
+  let now = 1800000000000, remaining = 100, sendFails = false, duplicateUuid = false, createdSheets = 0;
   const properties = { AUTH_SECRET: 'a'.repeat(64), AUTH_SHEET_ID: 'test-sheet', PILOT_EMAILS: 'player@kaist.ac.kr' };
   const tables = { Challenges: [['record_json']], Sessions: [['record_json']] }, mail = [];
   function sheet(name) {
@@ -19,9 +19,12 @@ function server() {
     Date: { now: () => now },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: text => ({ setMimeType: () => JSON.parse(text) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperties: () => ({ ...properties }), getProperty: key => properties[key], setProperty: (key, value) => { properties[key] = value; } }) },
-    SpreadsheetApp: { openById: () => ({ getSheetByName: sheet }), flush: () => {} },
+    SpreadsheetApp: { openById: () => ({ getSheetByName: sheet }), flush: () => {}, create: () => {
+      createdSheets++; tables.Challenges=[];tables.Sessions=[];
+      return {getSheets:()=>[{setName:()=>sheet('Challenges')}],insertSheet:sheet,getId:()=> 'test-sheet'};
+    } },
     LockService: { getScriptLock: () => ({ tryLock: () => { assert.equal(held, false); held = true; return true; }, releaseLock: () => { held = false; } }) },
-    Utilities: { Charset: { UTF_8: 'utf8' }, getUuid: randomUUID, computeHmacSha256Signature: (text, key) => [...createHmac('sha256', key).update(text).digest()] },
+    Utilities: { Charset: { UTF_8: 'utf8' }, DigestAlgorithm:{SHA_256:'sha256'}, computeDigest:(_,text)=>[...createHash('sha256').update(text).digest()], getUuid: () => duplicateUuid?'12345678-1234-4234-8234-123456789012':randomUUID(), computeHmacSha256Signature: (text, key) => [...createHmac('sha256', key).update(text).digest()] },
     MailApp: { getRemainingDailyQuota: () => remaining, sendEmail: value => { assert.equal(held, false, 'network mail must run outside lock'); if (sendFails) throw new Error('private provider message'); mail.push(value); remaining--; } }
   });
   vm.runInContext(readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8'), context);
@@ -31,8 +34,19 @@ function server() {
   }
   const request = (purpose = 'login') => call('requestCode', { email: 'player@kaist.ac.kr', purpose });
   function verification(challenge, overrides = {}) { return call('verifyCode', { email: 'player@kaist.ac.kr', purpose: 'login', challengeId: challenge.data.challengeId, code: mail.at(-1).body.match(/\d{6}/)[0], ...overrides }); }
-  return { call, request, verification, mail, tables, properties, advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; } };
+  return { call, request, verification, mail, tables, properties, advance: ms => { now += ms; }, failMail: () => { sendFails = true; }, noQuota: () => { remaining = 0; }, initialize:()=>context.initializeAuth_(), duplicateUuid:()=>{duplicateUuid=true;}, createdSheets:()=>createdSheets };
 }
+
+test('owner setup creates a server secret once and refuses reinitialization',()=>{
+ const s=server();delete s.properties.AUTH_SECRET;delete s.properties.AUTH_SHEET_ID;
+ s.initialize();assert.match(s.properties.AUTH_SECRET,/^[a-f0-9]{64}$/);assert.equal(s.createdSheets(),1);
+ const secret=s.properties.AUTH_SECRET;assert.throws(()=>s.initialize(),/Already initialized/);assert.equal(s.properties.AUTH_SECRET,secret);assert.equal(s.createdSheets(),1);
+});
+test('owner setup rejects a broken entropy source and preserves existing secrets',()=>{
+ const s=server();delete s.properties.AUTH_SECRET;delete s.properties.AUTH_SHEET_ID;s.duplicateUuid();
+ assert.throws(()=>s.initialize(),/entropy source/);assert.equal(s.properties.AUTH_SECRET,undefined);assert.equal(s.createdSheets(),0);
+ const other=server();delete other.properties.AUTH_SHEET_ID;const old=other.properties.AUTH_SECRET;other.initialize();assert.equal(other.properties.AUTH_SECRET,old);
+});
 
 test('email/domain/pilot restrictions run on the server', () => {
   const s = server();

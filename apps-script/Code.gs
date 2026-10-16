@@ -68,7 +68,7 @@ function unique_(config, label) {
   return hmac_(config, [label, counter, Date.now(), Utilities.getUuid()].join('|'));
 }
 function code_(config, nonce) {
-  // Rejection sampling avoids modulo bias. The PRF key is 256 random bits generated off-platform.
+  // Rejection sampling avoids modulo bias. The PRF key is a 256-bit server secret.
   for (let counter = 0; counter < 100; counter++) {
     const number = parseInt(hmac_(config, 'otp-generate|' + nonce + '|' + counter).slice(0, 8), 16);
     if (number < 4294000000) return String(number % 1000000).padStart(6, '0');
@@ -170,8 +170,17 @@ function logout_(input) {
 // Owner runs once from the editor, never reachable through doPost.
 function initializeAuth_() {
   const properties = PropertiesService.getScriptProperties();
-  if (!/^[a-f0-9]{64}$/i.test(properties.getProperty('AUTH_SECRET') || '') || !properties.getProperty('PILOT_EMAILS')) throw new Error('Set AUTH_SECRET and PILOT_EMAILS in Script Properties first.');
+  if (!properties.getProperty('PILOT_EMAILS')) throw new Error('Set PILOT_EMAILS in Script Properties first.');
   if (properties.getProperty('AUTH_SHEET_ID')) throw new Error('Already initialized; existing storage is preserved.');
+  if (!properties.getProperty('AUTH_SECRET')) {
+    // Google documents getUuid as java.util.UUID.randomUUID (cryptographically strong PRNG).
+    // Three independent v4 UUIDs supply 366 random bits before SHA-256 extraction.
+    const uuids = [Utilities.getUuid(), Utilities.getUuid(), Utilities.getUuid()];
+    if (new Set(uuids).size !== 3 || uuids.some(id => !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id))) throw new Error('Unexpected UUID entropy source.');
+    const secret = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, uuids.join('|'), Utilities.Charset.UTF_8).map(n => ('0' + ((n + 256) % 256).toString(16)).slice(-2)).join('');
+    properties.setProperty('AUTH_SECRET', secret);
+  }
+  if (!/^[a-f0-9]{64}$/i.test(properties.getProperty('AUTH_SECRET'))) throw new Error('Invalid AUTH_SECRET; existing secret is preserved.');
   const sheet = SpreadsheetApp.create('IGFL Auth Pilot — Private');
   sheet.getSheets()[0].setName('Challenges').appendRow(['record_json']);
   sheet.insertSheet('Sessions').appendRow(['record_json']);

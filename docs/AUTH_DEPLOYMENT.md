@@ -11,7 +11,7 @@
 ## 서버 배포 준비
 
 1. Apps Script에 `apps-script/Code.gs`, `OwnerSetup.gs`와 `appsscript.json`을 넣는다.
-2. 로컬 CSPRNG로 32바이트 키를 생성해 Script Properties의 `AUTH_SECRET`에 64자리 hex로 저장한다. 키를 채팅·콘솔·저장소에 출력하지 않는다. 키 변경은 기존 OTP·세션을 무효화한다.
+2. 서버 비밀값은 최초 초기화에서 생성한다. `Utilities.getUuid()`를 세 번 호출하고 SHA-256으로 64자리 hex 키를 만들어 Script Properties의 `AUTH_SECRET`에 보관한다. Google은 이 API가 `java.util.UUID.randomUUID()`와 동등하다고 명시하고, Oracle은 해당 메서드가 암호학적으로 강한 난수 생성기를 사용한다고 명시한다. UUID v4의 122비트 난수 부분 세 개를 입력하며 중복·형식 이상이면 초기화를 중단한다. 기존 키는 덮어쓰지 않는다. 키를 채팅·콘솔·저장소에 출력하지 않는다. 수동 키 변경은 기존 OTP·세션을 무효화한다. [Google Utilities](https://developers.google.com/apps-script/reference/utilities/utilities#getUuid()), [Java UUID](https://docs.oracle.com/javase/8/docs/api/java/util/UUID.html#randomUUID--).
 3. `PILOT_EMAILS`에 허가받은 테스트 주소만 쉼표로 넣는다. 현재 pilot은 이 값이 없으면 실패하며 전체 가입을 열지 않는다.
 4. 소유자가 편집기에서 `initializeAuth`를 한 번 실행한다. 내부의 `initializeAuth_`를 호출하는 편집기용 진입점이다. 밑줄로 끝나는 함수는 편집기 목록에 나오지 않는다. 비공개 인증 시트를 만들고 `AUTH_SHEET_ID`에 연결한다. 기존 저장소가 있으면 재초기화를 거부한다. 웹 API 라우터는 이 함수를 노출하지 않는다. HTML Service나 Apps Script API 실행 배포를 추가할 때 이 소유자용 파일을 배포본에서 제외한다.
 5. 필요한 OAuth 범위는 Sheets와 `script.send_mail` 두 가지다. Gmail 받은편지함 읽기·Drive 전체 읽기를 요구하지 않는다. Sheets 범위는 이 파일 하나로 제한되는 권한이 아니므로 소유자의 Google 승인 화면 확인이 필요하다.
@@ -22,7 +22,7 @@
 
 ## 구현한 보안 기본값
 
-인증번호는 안전하게 생성한 256비트 서버 키와 고유 nonce·카운터를 HMAC-SHA256에 넣어 발급한다. 숫자 변환은 rejection sampling을 쓴다. OTP 검증값과 세션 검증값도 서로 다른 용도로 HMAC 처리하고 원문은 시트에 저장하지 않는다. 모든 소비·발급 제한·세션 폐기는 ScriptLock 안에서 처리한다. 메일 발송은 잠금 밖에서 처리하고 발송 실패·중간 실패는 로그인 성공으로 인정하지 않는다.
+인증번호는 위 방식으로 생성한 서버 키와 고유 nonce·카운터를 HMAC-SHA256에 넣어 발급한다. 숫자 변환은 rejection sampling을 쓴다. OTP 검증값과 세션 검증값도 서로 다른 용도로 HMAC 처리하고 원문은 시트에 저장하지 않는다. 모든 소비·발급 제한·세션 폐기는 ScriptLock 안에서 처리한다. 메일 발송은 잠금 밖에서 처리하고 발송 실패·중간 실패는 로그인 성공으로 인정하지 않는다.
 
 파일럿 기본값: 재발송 간격 60초, challenge별 오입력 5회, 이메일별 시간당 5회, 전체 24시간 발송 예약 50회, 세션 12시간. 숫자 6자리·5분을 제외한 값은 운영 전 조정 가능한 기술 기본값이다. 발송 실패도 발송 예산에 포함해 장애 시 재시도 폭주를 막는다. MailApp 잔여 할당량도 확인한다.
 
@@ -32,22 +32,23 @@
 
 ## 프런트엔드 배포
 
-`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행하고, Pages를 지원하는 플랜에서 Pages 설정을 GitHub Actions로 켠 뒤 저장소 변수 `PAGES_ENABLED=true`를 지정해야 배포한다. 현재 계정은 비공개 Pages를 지원하지 않아 배포는 꺼둔다.
+`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행하고, Pages를 지원하는 플랜에서 Pages 설정을 GitHub Actions로 켠 뒤 저장소 변수 `PAGES_ENABLED=true`를 지정해야 배포한다. 현재 계정은 비공개 Pages를 지원하지 않아 배포는 꺼둔다. 사용자는 나중에 지원 플랜을 준비하기로 했다. 그 전에는 로컬 브라우저에서 연동을 검증하며 대체 호스팅·공개 전환을 하지 않는다.
 
 비공개 소스여도 Pages 사이트가 자동으로 비공개가 되는 것은 아니다. 무료 대체 호스팅을 선택한다면 공개 화면과 세션 화면의 권한 범위를 동일하게 검증한다.
 
 ## 검증 기록
 
-2026-10-16 로컬 Node 테스트 10개 통과: 정확한 도메인/파일럿 제한, 코드 재사용 차단, 5분 만료, 이메일·목적 귀속, 오입력 한도, 재발급 무효화, 메일 실패/할당량, 세션 만료/폐기, 시간별·일별 제한, CORS 클라이언트 전송과 오류 처리.
+2026-10-16 로컬 Node 테스트 12개 통과: 서버 키 최초 생성·재초기화 차단·이상 난수 소스 거부, 정확한 도메인/파일럿 제한, 코드 재사용 차단, 5분 만료, 이메일·목적 귀속, 오입력 한도, 재발급 무효화, 메일 실패/할당량, 세션 만료/폐기, 시간별·일별 제한, CORS 클라이언트 전송과 오류 처리.
 
-로컬 브라우저에서 소개 홈·메뉴·로그인·미연결 상태 안내를 확인했다. 390×844 모바일 화면에서 메뉴와 입력 폼이 한 열로 배치되는 것을 확인했다. Google 편집기에 Code.gs와 권한 매니페스트를 저장했다. `OwnerSetup.gs`는 로컬 준비 상태이며 Google 권한 승인 후 추가해야 한다. 현재 OAuth 승인 화면은 미승인 상태이며 실제 시트 생성·메일 발송은 하지 않았다.
+로컬 브라우저에서 소개 홈·메뉴·로그인·미연결 상태 안내를 확인했다. 390×844 모바일 화면에서 메뉴와 입력 폼이 한 열로 배치되는 것을 확인했다. Google 편집기에 Code.gs와 OwnerSetup.gs를 하나의 Code.gs로 합쳐 저장하고 권한 매니페스트를 반영했다. 사용자의 명시적 승인 후 Sheets 및 메일 발송 OAuth 권한을 적용했다. 소유자 초기화 함수가 Google에서 실제 성공하여 전용 시트·키를 생성했다. 현재 소유자 실행·모든 사용자 호출 웹 앱 배포는 사용자 확인을 기다리고 있으며 메일 발송은 아직 하지 않았다.
+
+생성된 인증 시트의 Drive 권한 메타데이터를 확인했다. `shared=false`이며 권한 항목은 소유자 1명뿐이다. 시트 내용이나 서버 비밀값을 공개 화면·저장소에 복사하지 않았다.
 
 이 테스트는 Google 서비스 모형을 사용한다. Apps Script 실제 권한·시트 쓰기·MailApp 발송·LockService 동시 실행·브라우저 CORS를 증명하지 않는다.
 
 남은 실제 검증:
 
-- Google OAuth 승인과 비공개 시트 생성.
-- 익명 웹 앱 배포 가능 여부.
+- 익명 웹 앱 배포 승인과 실제 배포 성공 확인.
 - 실제 호스트에서 `health` POST의 JSON 응답 읽기와 리디렉션/CORS.
 - 허가받은 테스트 이메일 수신 → 코드 입력 → 서버 세션 재확인 → 새로고침 → 로그아웃 후 거부.
 - 틀린 코드·만료·재발급·두 번 검증·동시 검증의 실제 동작.
