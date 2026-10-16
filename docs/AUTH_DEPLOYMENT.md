@@ -12,19 +12,19 @@
 
 1. 현재는 `node scripts/build-gas.mjs`로 만든 `.local/AppsScript.gs`를 Apps Script의 `Code.gs`에 넣는다. 이 번들은 인증·리그·어댑터·소유자 초기화 함수를 포함한다. 매니페스트는 `apps-script/appsscript.json`을 따른다.
 2. 서버 비밀값은 최초 초기화에서 생성한다. `Utilities.getUuid()`를 세 번 호출하고 SHA-256으로 64자리 hex 키를 만들어 Script Properties의 `AUTH_SECRET`에 보관한다. Google은 이 API가 `java.util.UUID.randomUUID()`와 동등하다고 명시하고, Oracle은 해당 메서드가 암호학적으로 강한 난수 생성기를 사용한다고 명시한다. UUID v4의 122비트 난수 부분 세 개를 입력하며 중복·형식 이상이면 초기화를 중단한다. 기존 키는 덮어쓰지 않는다. 키를 채팅·콘솔·저장소에 출력하지 않는다. 수동 키 변경은 기존 OTP·세션을 무효화한다. [Google Utilities](https://developers.google.com/apps-script/reference/utilities/utilities#getUuid()), [Java UUID](https://docs.oracle.com/javase/8/docs/api/java/util/UUID.html#randomUUID--).
-3. `PILOT_EMAILS`에 허가받은 테스트 주소만 쉼표로 넣는다. 현재 pilot은 이 값이 없으면 실패하며 전체 가입을 열지 않는다.
+3. 기본 `AUTH_EMAIL_SCOPE=pilot`에서는 `PILOT_EMAILS`에 허가받은 테스트 주소만 쉼표로 넣는다. 이 목록이 없으면 실패한다. 명시적으로 승인한 경우에만 `AUTH_EMAIL_SCOPE=kaist`로 정확한 `@kaist.ac.kr` 이메일 전체를 허용한다. 알 수 없는 범위는 실패하며, 하위 도메인은 어느 모드에서도 허용하지 않는다. 인증 확대와 선수 정보 등록 개통은 별개다.
 4. 소유자가 편집기에서 `initializeAuth`를 한 번 실행한다. 내부의 `initializeAuth_`를 호출하는 편집기용 진입점이다. 밑줄로 끝나는 함수는 편집기 목록에 나오지 않는다. 비공개 인증 시트를 만들고 `AUTH_SHEET_ID`에 연결한다. 기존 저장소가 있으면 재초기화를 거부한다. 웹 API 라우터는 이 함수를 노출하지 않는다. HTML Service나 Apps Script API 실행 배포를 추가할 때 이 소유자용 파일을 배포본에서 제외한다.
 5. 필요한 OAuth 범위는 Sheets와 `script.send_mail` 두 가지다. Gmail 받은편지함 읽기·Drive 전체 읽기를 요구하지 않는다. Sheets 범위는 이 파일 하나로 제한되는 권한이 아니므로 소유자의 Google 승인 화면 확인이 필요하다.
 6. 웹 앱을 소유자 권한 실행·익명 접근으로 배포한다. 학교 정책에서 익명 접근이 불가능하면 그 상태를 기록하고 별도 호스트 구성을 검토한다.
 7. `/macros/s/.../exec` URL을 `config.json`의 `authEndpoint`에 넣는다. URL 자체는 비밀값이 아니다. `/dev` 주소나 리디렉션된 일회성 URL은 저장하지 않는다.
 
-프로젝트: [IGFL Auth Pilot](https://script.google.com/home/projects/1dx9LuoPiC8HdbP-idMXLx1DWr1lqdJge4CcgLBDNCeilVjkRMmrlfyxI/edit). 이는 편집기 링크이며 인증 API URL은 `config.json`을 따른다. 최초 버전 1의 소유자 실행·모든 사용자 호출 설정과 같은 URL을 유지한 채 2026-10-16 리그 서버를 포함한 **버전 3**으로 갱신했다. 인증 프로토콜 버전은 0.1.0 그대로다. 현재 테스트 이메일만 허용하는 파일럿이며 실제 선수 가입·시즌·리그 알림은 닫혀 있다.
+프로젝트: [IGFL Auth Pilot](https://script.google.com/home/projects/1dx9LuoPiC8HdbP-idMXLx1DWr1lqdJge4CcgLBDNCeilVjkRMmrlfyxI/edit). 이는 편집기 링크이며 인증 API URL은 `config.json`을 따른다. 최초 버전 1의 소유자 실행·모든 사용자 호출 설정과 같은 URL을 유지한 채 2026-10-16 **배포 버전 4 / 인증 코드 0.2.0**으로 갱신했다. 사용자 승인으로 `AUTH_EMAIL_SCOPE=kaist`를 적용했다. 실제 선수 가입·시즌·리그 알림은 계속 닫혀 있다. JSON 프로토콜 식별자 `igfl-auth-v1`은 유지한다.
 
 ## 구현한 보안 기본값
 
 인증번호는 위 방식으로 생성한 서버 키와 고유 nonce·카운터를 HMAC-SHA256에 넣어 발급한다. 숫자 변환은 rejection sampling을 쓴다. OTP 검증값과 세션 검증값도 서로 다른 용도로 HMAC 처리하고 원문은 시트에 저장하지 않는다. 모든 소비·발급 제한·세션 폐기는 ScriptLock 안에서 처리한다. 메일 발송은 잠금 밖에서 처리하고 발송 실패·중간 실패는 로그인 성공으로 인정하지 않는다.
 
-파일럿 기본값: 재발송 간격 60초, challenge별 오입력 5회, 이메일별 시간당 5회, 전체 24시간 발송 예약 50회, 세션 12시간. 숫자 6자리·5분을 제외한 값은 운영 전 조정 가능한 기술 기본값이다. 발송 실패도 발송 예산에 포함해 장애 시 재시도 폭주를 막는다. MailApp 잔여 할당량도 확인한다.
+현재 기본값: 재발송 간격 60초, challenge별 오입력 5회, 이메일별 시간당 5회, 전체 24시간 발송 예약 50회, 세션 12시간. 숫자 6자리·5분을 제외한 값은 운영 전 조정 가능한 기술 기본값이다. 발송 실패도 발송 예산에 포함해 장애 시 재시도 폭주를 막는다. MailApp 잔여 할당량도 확인한다.
 
 브라우저는 같은 탭의 `sessionStorage`에 세션을 보관하고 모든 보호 요청에 서버 확인을 받는다. HttpOnly 쿠키는 아니며 XSS 방어가 필요하다. 외부 스크립트·외부 폰트 없이 CSP를 적용하며 서버 메시지·이메일은 textContent로 렌더링한다. 탭을 닫으면 클라이언트 세션은 사라지고 서버에서도 12시간 후 무효다. 세션 scope은 `auth-pilot`이며 이 값만으로 팀·운영진 권한이 생기지 않는다. 리그 API는 검증된 세션의 내부 ID로 현재 팀/대표를 조회하고 Script Properties에 지정된 운영진 ID를 확인한다.
 
@@ -72,3 +72,25 @@ Google에 로그인하지 않은 별도 브라우저의 `http://127.0.0.1:4173` 
 배포 전후 실제 리그 API 설정을 읽어 `registrationOpen=false`, `seasonOpen=false`, 선수/팀 0을 확인했다. 실제 선수 가입은 계속 닫혀 있다. 홈페이지 공개로 비공개 인증 시트나 Script Properties를 공유하지 않았다. 개발 검증 계정·합성 데이터·로컬 파일도 Pages에 배포하지 않는다.
 
 개인 홈페이지의 기본 경로는 `https://noeyusiohc.github.io/`, IGFL 프로젝트 경로는 `https://noeyusiohc.github.io/igfl/`이다. 이번 설정은 `igfl` 저장소에만 적용했으며 개인 홈페이지 저장소·도메인 설정은 변경하지 않았다.
+
+## KAIST 인증 확대와 Google 메일 잔여량 확인
+
+2026-10-16 사용자 지시로 인증 범위를 정확한 `@kaist.ac.kr`로 확대했다. 지정한 연구실 Google 계정의 소유자 실행 환경에서 `inspectRuntimeStatus()`가 성공했고 14:30 KST 로그의 `remainingMailRecipients`는 **1499**였다. 계정의 실제 주소는 비공개 운영 설정에서 관리한다. 이 값은 해당 시점의 남은 수신자분이며 메시지 수·고정 일일 한도·학교 사용 승인 증빙은 아니다. IGFL 자체 인증 발송 예약은 여전히 24시간 50회다.
+
+같은 실행에서 `authEmailScope=kaist`, `registrationOpen=false`, `seasonOpen=false`를 확인했다. 기존 OAuth 두 범위·실행자·호출 권한·API URL을 유지한 채 14:47 KST **버전 4** 배포가 완료됐다. 실제 HTTP `health`는 인증 코드 `0.2.0`, `pilot=false`, `emailScope=kaist`, `allowedDomain=kaist.ac.kr`를 반환했다. 공개 리그 조회는 가입·시즌 닫힘, 빈 개인정보 동의 버전, 선수/팀 0을 반환했다.
+
+공개 Pages 로그인 화면에서 연결 점검을 눌러 `서버 응답 확인 완료 · IGFL Auth · 0.2.0`을 확인했다. 이번 점검에서 새 OTP 메일은 발송하지 않았다. KAIST 범위·유사 도메인 거부·미설정 실패·할당량 조회의 비밀 미노출·범위 변경 시 가입 닫힘 유지에 대한 3개 검증을 추가해 전체 자동 테스트 **39개**가 통과했다. 정적 빌드와 변경 공백 검사도 통과했다.
+
+사용자가 지정한 운영 담당자 주소는 개인정보 문의 창구와 향후 운영 알림 수신 주소로 사용한다. 현재 공개 저장소에는 실제 주소를 넣지 않았고, `LEAGUE_ADMIN_EMAILS`·최초 운영진 역할·메일 트리거는 아직 설정하지 않았다. 담당자 지정이 메일 발송이나 관리자 권한 자동 부여를 뜻하지 않는다.
+
+이후 사용자가 개인정보·경기 예외 규칙을 채택한 내용과 구현 상태는 아래 기록을 따른다.
+
+## 개인정보 정책과 경기 제안 반영
+
+2026-10-16 15:44 KST 기존 URL·소유자 실행·모든 사용자 호출 설정을 유지해 **배포 버전 5 / 인증 코드 0.3.0**으로 갱신했다. OAuth 범위를 추가하지 않았다. 실제 health는 `0.3.0`, `emailScope=kaist`를 반환했다. 실제 공개 리그 응답에서 `registrationOpen=false`, `seasonOpen=false`, 선수/팀 0, `refereeCount=1`, `clockMode=running`과 별도 공개 동의 버전을 확인했다. 이번 작업에서 실제 OTP·리그 알림은 발송하지 않았다.
+
+회원 등록의 생년월일 제거·필수 공개 동의, 회원 탈퇴·인증 계정 연결 삭제, 팀 대표 전용 경기 제안·홈페이지 알림, 일정 변경·취소 합의, 자책골·중단/몰수·확정 후 정정을 공통 엔진에 추가했다. 자동 테스트 57개와 정적 빌드·합쳐진 Apps Script 구문 검사가 통과했다. CI에서도 Apps Script 빌드를 검사한다.
+
+별도 localhost 합성 데이터 브라우저에서 부주장의 제안 발신 → 상대 부주장 수신·수락 → 상대가 미리 선택된 일정 등록, 일반 선수 제안 버튼 숨김, 생년월일 없는 등록 폼과 필수 동의 두 개, 자책골 포함 양 팀 기록 제출 → 대표 재확인 → 심판 최종 승인을 확인했다. 기존 로컬 체험 서버의 합성 데이터와 승인 대기 항목을 보존한 채 업데이트했으며 받은 경기 제안 예시를 하나 추가했다. 실제 Google의 개인정보 등록·탈퇴·동시 승인 부하 시험은 수행하지 않았다.
+
+정책 채택과 가입 개통은 별개다. Google 자체 변경 이력·외부 백업의 파기, 무접속 상태의 자동 보관 만료, 처리 수탁/국외 이전 세부 고지와 최초 운영진·메일 설정은 개통 전에 확인한다. 실제 가입·시즌·리그 메일은 계속 닫혀 있다.

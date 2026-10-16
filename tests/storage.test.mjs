@@ -7,11 +7,21 @@ function storage({ send = () => {}, quota = () => 100 } = {}) {
   const rows = [["snapshot_chunks"]],
     properties = {},
     settings = {};
-  let fail = false;
+  let fail = false,
+    failClear = false;
+  const erased = [];
   const sheet = {
     getLastRow: () => rows.length,
     getRange: (row, col, count) => ({
       getValues: () => rows.slice(row - 1, row - 1 + count),
+      clearContent() {
+        if (failClear) {
+          failClear = false;
+          throw new Error("clear interrupted");
+        }
+        for (let i = 0; i < count; i++) rows[row - 1 + i] = [""];
+        return this;
+      },
       setNumberFormat() {
         return this;
       },
@@ -34,6 +44,7 @@ function storage({ send = () => {}, quota = () => 100 } = {}) {
       getScriptProperties: () => ({
         getProperty: (k) => properties[k],
         setProperty: (k, v) => (properties[k] = v),
+        deleteProperty: (k) => delete properties[k],
       }),
     },
     Utilities: {
@@ -45,6 +56,7 @@ function storage({ send = () => {}, quota = () => 100 } = {}) {
       }),
     },
     table_: () => sheet,
+    eraseAuthAccount_: (_, id, email) => erased.push({ id, email }),
     SpreadsheetApp: { flush: () => {} },
     fail_: (code) => {
       throw new Error(code);
@@ -63,6 +75,12 @@ function storage({ send = () => {}, quota = () => 100 } = {}) {
     processEmails: () => c.processLeagueEmails(),
     properties,
     rows,
+    erased,
+    compact: () => c.compactLeagueSnapshots_({}),
+    completeErase: () => c.completeAccountErasure_({}),
+    failClear: () => {
+      failClear = true;
+    },
     fail: () => (fail = true),
     recover: () => (fail = false),
   };
@@ -150,4 +168,27 @@ test("encoded chunks preserve unicode boundaries and cannot become spreadsheet f
       .privacyNotice,
     s.settings.privacyNotice,
   );
+});
+
+test("erasure retries after a failed cleanup and clears superseded snapshots after the redacted state is committed", () => {
+  const db = storage(),
+    s = League.createState();
+  s.players.push({ id: "delete-me", name: "비공개 이름", lab: "합성 연구실" });
+  s.profiles.push({ id: "delete-me", email: "delete@example.invalid" });
+  db.save(s);
+  db.properties.PENDING_ACCOUNT_ERASURE = JSON.stringify({
+    userId: "delete-me",
+    email: "delete@example.invalid",
+  });
+  db.failClear();
+  assert.throws(() => db.completeErase(), /clear interrupted/);
+  assert.ok(db.properties.PENDING_ACCOUNT_ERASURE);
+  assert.equal(db.load().players.length, 0);
+  db.completeErase();
+  assert.equal(db.properties.PENDING_ACCOUNT_ERASURE, undefined);
+  assert.equal(db.load().profiles.length, 0);
+  const pointer = JSON.parse(db.properties.LEAGUE_ACTIVE_SNAPSHOT);
+  assert.ok(db.rows.slice(1, pointer.row - 1).every(([value]) => value === ""));
+  assert.ok(db.erased.every((x) => x.id === "delete-me"));
+  assert.equal(JSON.stringify(db.load()).includes("delete-me"), false);
 });
