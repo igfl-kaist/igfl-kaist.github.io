@@ -24,7 +24,7 @@
 
 `mode: no-cors`의 읽을 수 없는 응답, JSONP, 이메일·OTP·세션을 GET 쿼리에 넣는 방식으로 인증을 우회하지 않는다. 직접 fetch가 동작하지 않으면 Apps Script HTML Service의 인증 화면과 `google.script.run` 통신을 대안으로 검토한다. 이 API는 Apps Script가 제공하는 페이지에서 사용한다. Pages에 임의로 코드를 붙이면 동일하게 동작한다고 가정하지 않는다. 필요하면 인증·보호 화면을 Apps Script 호스트로 옮기는 안과 별도 게이트웨이 안을 비교해 사용자에게 제시한다. [서버 함수 통신](https://developers.google.com/apps-script/guides/html/communication).
 
-이 연동 검증은 실제 구현 첫 단계의 기술 점검이다. 현재 외부 배포를 만들지 않았으므로 직접 fetch의 성공을 확인했다고 주장하지 않는다.
+이 연동 검증은 실제 구현 첫 단계의 기술 점검이다. 실제 Apps Script 배포와 로컬 브라우저의 직접 fetch·메일 인증·세션 유지를 확인했다. GitHub Pages 출처의 직접 fetch는 지원 플랜 준비 후 별도로 검증한다. 상세한 실제 결과와 자동 테스트의 범위는 [배포·검증 기록](AUTH_DEPLOYMENT.md)을 따른다.
 
 [GitHub Pages 제한](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)은 민감한 거래에 Pages를 쓰지 않도록 안내한다. OTP로 바꿨다는 이유만으로 호스팅 정책 검토가 불필요해지는 것은 아니다. 실제 인증 입력을 Apps Script HTML Service에 두고 Pages는 공개 화면·로그인 진입을 담당하게 하는 안도 함께 검토한다.
 
