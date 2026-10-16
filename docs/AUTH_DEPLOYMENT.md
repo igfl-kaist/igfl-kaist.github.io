@@ -32,7 +32,7 @@
 
 ## 프런트엔드 배포
 
-`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행하고, Pages를 지원하는 플랜에서 Pages 설정을 GitHub Actions로 켠 뒤 저장소 변수 `PAGES_ENABLED=true`를 지정해야 배포한다. 현재 계정은 비공개 Pages를 지원하지 않아 배포는 꺼둔다. 사용자는 나중에 지원 플랜을 준비하기로 했다. 그 전에는 로컬 브라우저에서 연동을 검증하며 대체 호스팅·공개 전환을 하지 않는다.
+`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 개발 검증 계정, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행한다. 2026-10-16 사용자 승인으로 저장소를 공개하고 Pages Source를 GitHub Actions로 설정했으며 저장소 변수 `PAGES_ENABLED=true`를 지정했다. main 병합/푸시 또는 수동 실행으로 `https://noeyusiohc.github.io/igfl/`에 배포한다. 이전의 지원 플랜 대기 결정은 최신 지시로 대체됐다. 실제 가입·시즌은 서버에서 계속 닫아둔다.
 
 비공개 소스여도 Pages 사이트가 자동으로 비공개가 되는 것은 아니다. 무료 대체 호스팅을 선택한다면 공개 화면과 세션 화면의 권한 범위를 동일하게 검증한다.
 
@@ -50,7 +50,7 @@ Google에 로그인하지 않은 별도 브라우저의 `http://127.0.0.1:4173` 
 
 남은 실제 검증:
 
-- 지원 플랜 준비 후 실제 GitHub Pages 출처에서 JSON 응답 읽기와 리디렉션/CORS 재확인.
+- 최초 공개 배포 후 실제 GitHub Pages 출처에서 JSON 응답 읽기와 리디렉션/CORS 재확인.
 - 실제 서버에서 만료·재발급·두 번 검증·동시 검증·로그아웃 전 토큰 재사용 거부 추가 점검.
 - 모바일 입력·다시 받기·연결 실패 복구.
 
