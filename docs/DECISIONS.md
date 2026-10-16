@@ -10,7 +10,7 @@
 
 | 번호 | 결정 | 필요한 시점과 현재 후보 |
 | --- | --- | --- |
-| D01 | 호스팅·백엔드·예산 | 개인 계정의 별도 `noeyusiohc/igfl`에서 개발. 처음 비공개였으며 2026-10-16 최신 사용자 지시로 공개 전환·GitHub Pages 설정·PR 병합을 승인하고 적용. Pages Source=GitHub Actions, PAGES_ENABLED=true. 실제 선수 가입은 계속 닫힘. 리그 서버는 Apps Script·비공개 Sheets 파일럿. 장기 DB·이미지 저장소와 예산은 운영 전 검토 |
+| D01 | 호스팅·백엔드·예산 | 개인 계정의 별도 `noeyusiohc/igfl`에서 개발. 처음 비공개였으며 2026-10-16 최신 사용자 지시로 공개 전환·GitHub Pages 설정·PR 병합을 승인하고 적용. Pages Source=GitHub Actions, PAGES_ENABLED=true. 실제 선수 가입은 계속 닫힘. 리그 서버는 Apps Script·비공개 Sheets 파일럿. 장기 DB·이미지 저장소와 예산은 운영 전 검토. 페이지 개발 완료 후 리그 Organization으로 이전하는 방향 확정; 이름·실행 시점 미정 |
 | D02 | Apps Script 인증 연결 검증 | 이메일 6자리·5분 로그인과 Apps Script·비공개 Sheets 우선 사용으로 변경. 비밀번호 제거. 실제 Pages CORS·세션·할당량을 AUTH_APPS_SCRIPT.md대로 점검 |
 | D03 | 중복 등록 기준 | 기본 도메인은 정확한 kaist.ac.kr. 이메일 별칭과 학번/사번 중복·변경은 구현 시 정하고 임의 하위 도메인을 허용하지 않음 |
 | D04 | 개인정보 보관·탈퇴·공개 기록 정책과 최종 동의 문구 | 실제 개인정보 수집 전. 수집 목적·항목·보관·거부 안내, 탈퇴 후 과거 이름·기록 처리. UI 초안을 최종 정책으로 사용하지 않음 |
@@ -117,7 +117,7 @@ Supabase를 선택하면 노출 테이블의 권한과 RLS를 함께 설정하�
 
 ## 저장소와 호스팅
 
-사용자는 기존 개인 계정에 별도 `igfl` 저장소를 만들어 개발했다. 처음에는 비공개였으며, 이후 공개 전환·Pages 설정·PR 병합을 명시적으로 승인했다. 공개 Pages의 배포 대상은 `https://noeyusiohc.github.io/igfl/`다. 새 Organization이나 별도 공유 계정을 만들지 않는다. 기존 개인 홈페이지 저장소·주소는 보존한다. 실제 선수 가입은 닫힌 상태를 유지한다.
+사용자는 기존 개인 계정에 별도 `igfl` 저장소를 만들어 개발했다. 처음에는 비공개였으며, 이후 공개 전환·Pages 설정·PR 병합을 명시적으로 승인했다. 공개 Pages의 배포 대상은 `https://noeyusiohc.github.io/igfl/`다. 사용자는 페이지 개발 완료 후 리그용 Organization으로 저장소를 이전하기로 했다. Organization 이름과 이전 시점은 미정이므로 현재는 개인 계정에서 개발한다. 별도 공유 로그인 계정은 만들지 않는다. 기존 개인 홈페이지 저장소·주소는 보존한다. 실제 선수 가입은 닫힌 상태를 유지한다.
 
 공개 저장소의 Pages는 GitHub Free에서 사용할 수 있고 프로젝트 주소는 `<사용자>.github.io/<저장소>/`다. 비공개 저장소 Pages는 지원 유료 플랜이 필요하다. DB·메일·인증·이미지 저장·독립 도메인 비용은 별도이며 서비스 전체가 무조건 무료라고 보장하지 않는다. [공식 Pages 안내](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)를 2026년 10월 16일 확인했다.
 
