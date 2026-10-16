@@ -2,7 +2,7 @@
 
 ## 현재 범위
 
-- 소개 홈, 로그인/등록 공통 이메일 코드 UI, 인증 완료 후 본인 세션 화면.
+- 소개 홈, 로그인/등록 공통 이메일 코드 UI, 인증 완료 후 선수·팀·경기·심판·운영진 화면. 리그 상세는 [운영 인계](LEAGUE_OPERATIONS.md)를 따른다.
 - Apps Script의 도메인 검사·6자리·5분·서버 세션·로그아웃.
 - 로그인과 등록 목적을 challenge에 묶으며 선수 프로필 등록은 아직 열지 않는다.
 - `config.json`에는 배포된 인증 파일럿 `/exec` URL을 연결했다. 빈 endpoint에서는 발송을 막고 준비 중 안내를 표시한다.
@@ -10,7 +10,7 @@
 
 ## 서버 배포 준비
 
-1. Apps Script에 `apps-script/Code.gs`, `OwnerSetup.gs`와 `appsscript.json`을 넣는다.
+1. 현재는 `node scripts/build-gas.mjs`로 만든 `.local/AppsScript.gs`를 Apps Script의 `Code.gs`에 넣는다. 이 번들은 인증·리그·어댑터·소유자 초기화 함수를 포함한다. 매니페스트는 `apps-script/appsscript.json`을 따른다.
 2. 서버 비밀값은 최초 초기화에서 생성한다. `Utilities.getUuid()`를 세 번 호출하고 SHA-256으로 64자리 hex 키를 만들어 Script Properties의 `AUTH_SECRET`에 보관한다. Google은 이 API가 `java.util.UUID.randomUUID()`와 동등하다고 명시하고, Oracle은 해당 메서드가 암호학적으로 강한 난수 생성기를 사용한다고 명시한다. UUID v4의 122비트 난수 부분 세 개를 입력하며 중복·형식 이상이면 초기화를 중단한다. 기존 키는 덮어쓰지 않는다. 키를 채팅·콘솔·저장소에 출력하지 않는다. 수동 키 변경은 기존 OTP·세션을 무효화한다. [Google Utilities](https://developers.google.com/apps-script/reference/utilities/utilities#getUuid()), [Java UUID](https://docs.oracle.com/javase/8/docs/api/java/util/UUID.html#randomUUID--).
 3. `PILOT_EMAILS`에 허가받은 테스트 주소만 쉼표로 넣는다. 현재 pilot은 이 값이 없으면 실패하며 전체 가입을 열지 않는다.
 4. 소유자가 편집기에서 `initializeAuth`를 한 번 실행한다. 내부의 `initializeAuth_`를 호출하는 편집기용 진입점이다. 밑줄로 끝나는 함수는 편집기 목록에 나오지 않는다. 비공개 인증 시트를 만들고 `AUTH_SHEET_ID`에 연결한다. 기존 저장소가 있으면 재초기화를 거부한다. 웹 API 라우터는 이 함수를 노출하지 않는다. HTML Service나 Apps Script API 실행 배포를 추가할 때 이 소유자용 파일을 배포본에서 제외한다.
@@ -18,7 +18,7 @@
 6. 웹 앱을 소유자 권한 실행·익명 접근으로 배포한다. 학교 정책에서 익명 접근이 불가능하면 그 상태를 기록하고 별도 호스트 구성을 검토한다.
 7. `/macros/s/.../exec` URL을 `config.json`의 `authEndpoint`에 넣는다. URL 자체는 비밀값이 아니다. `/dev` 주소나 리디렉션된 일회성 URL은 저장하지 않는다.
 
-프로젝트: [IGFL Auth Pilot](https://script.google.com/home/projects/1dx9LuoPiC8HdbP-idMXLx1DWr1lqdJge4CcgLBDNCeilVjkRMmrlfyxI/edit). 이는 편집기 링크이며 인증 API URL은 `config.json`을 따른다. 소유자 실행·모든 사용자 호출로 버전 1을 배포했다. 현재 테스트 이메일만 허용하는 파일럿이다.
+프로젝트: [IGFL Auth Pilot](https://script.google.com/home/projects/1dx9LuoPiC8HdbP-idMXLx1DWr1lqdJge4CcgLBDNCeilVjkRMmrlfyxI/edit). 이는 편집기 링크이며 인증 API URL은 `config.json`을 따른다. 최초 버전 1의 소유자 실행·모든 사용자 호출 설정과 같은 URL을 유지한 채 2026-10-16 리그 서버를 포함한 **버전 3**으로 갱신했다. 인증 프로토콜 버전은 0.1.0 그대로다. 현재 테스트 이메일만 허용하는 파일럿이며 실제 선수 가입·시즌·리그 알림은 닫혀 있다.
 
 ## 구현한 보안 기본값
 
@@ -26,13 +26,13 @@
 
 파일럿 기본값: 재발송 간격 60초, challenge별 오입력 5회, 이메일별 시간당 5회, 전체 24시간 발송 예약 50회, 세션 12시간. 숫자 6자리·5분을 제외한 값은 운영 전 조정 가능한 기술 기본값이다. 발송 실패도 발송 예산에 포함해 장애 시 재시도 폭주를 막는다. MailApp 잔여 할당량도 확인한다.
 
-브라우저는 같은 탭의 `sessionStorage`에 세션을 보관하고 모든 보호 요청에 서버 확인을 받는다. HttpOnly 쿠키는 아니며 XSS 방어가 필요하다. 외부 스크립트·외부 폰트 없이 CSP를 적용하며 서버 메시지·이메일은 textContent로 렌더링한다. 탭을 닫으면 클라이언트 세션은 사라지고 서버에서도 12시간 후 무효다. 현재 세션 scope은 `auth-pilot`뿐이며 팀·운영진 권한을 부여하지 않는다.
+브라우저는 같은 탭의 `sessionStorage`에 세션을 보관하고 모든 보호 요청에 서버 확인을 받는다. HttpOnly 쿠키는 아니며 XSS 방어가 필요하다. 외부 스크립트·외부 폰트 없이 CSP를 적용하며 서버 메시지·이메일은 textContent로 렌더링한다. 탭을 닫으면 클라이언트 세션은 사라지고 서버에서도 12시간 후 무효다. 세션 scope은 `auth-pilot`이며 이 값만으로 팀·운영진 권한이 생기지 않는다. 리그 API는 검증된 세션의 내부 ID로 현재 팀/대표를 조회하고 Script Properties에 지정된 운영진 ID를 확인한다.
 
 인증 시트는 파일럿용이다. 요청 시 24시간이 지나고 만료된 인증·세션 레코드를 정리한다. 트래픽이 없으면 다음 요청 전까지 행이 남는다. 실제 선수 개인정보의 보관 정책으로 확장하지 않는다. 운영 정책 확정 뒤 시간 기반 정리·철회·탈퇴 정책을 별도로 구현한다.
 
 ## 프런트엔드 배포
 
-`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행하고, Pages를 지원하는 플랜에서 Pages 설정을 GitHub Actions로 켠 뒤 저장소 변수 `PAGES_ENABLED=true`를 지정해야 배포한다. 현재 계정은 비공개 Pages를 지원하지 않아 배포는 꺼둔다. 사용자는 나중에 지원 플랜을 준비하기로 했다. 그 전에는 로컬 브라우저에서 연동을 검증하며 대체 호스팅·공개 전환을 하지 않는다.
+`node scripts/build.mjs`가 `dist/`에 index·src·config·.nojekyll만 복사한다. Apps Script 코드, 개발 검증 계정, 테스트, 기획, 실제 개인정보, `.local/`은 사이트에 배포하지 않는다. GitHub Actions는 테스트·빌드를 실행한다. 2026-10-16 사용자 승인으로 저장소를 공개하고 Pages Source를 GitHub Actions로 설정했으며 저장소 변수 `PAGES_ENABLED=true`를 지정했다. main 병합/푸시 또는 수동 실행으로 `https://noeyusiohc.github.io/igfl/`에 배포한다. 이전의 지원 플랜 대기 결정은 최신 지시로 대체됐다. 실제 가입·시즌은 서버에서 계속 닫아둔다.
 
 비공개 소스여도 Pages 사이트가 자동으로 비공개가 되는 것은 아니다. 무료 대체 호스팅을 선택한다면 공개 화면과 세션 화면의 권한 범위를 동일하게 검증한다.
 
@@ -50,8 +50,14 @@ Google에 로그인하지 않은 별도 브라우저의 `http://127.0.0.1:4173` 
 
 남은 실제 검증:
 
-- 지원 플랜 준비 후 실제 GitHub Pages 출처에서 JSON 응답 읽기와 리디렉션/CORS 재확인.
+- 최초 공개 배포 후 실제 GitHub Pages 출처에서 JSON 응답 읽기와 리디렉션/CORS 재확인.
 - 실제 서버에서 만료·재발급·두 번 검증·동시 검증·로그아웃 전 토큰 재사용 거부 추가 점검.
 - 모바일 입력·다시 받기·연결 실패 복구.
 
 실제 검증이 완료되기 전 이 인증을 안전한 운영 서비스로 표현하거나 리그 개인정보를 받지 않는다.
+
+## 리그 기능 추가 검증
+
+2026-10-16 기존 비공개 인증 시트에 리그 전용 탭을 소유자 초기화 함수로 추가했다. 기존 인증 정보와 공유 범위는 유지했다. 버전 3은 36개 자동 테스트를 통과한 공통 리그 엔진·이미지 검증·스냅샷 저장·메일 작업을 포함한다. 로컬 브라우저에서 배포된 리그 API의 공개 응답을 읽어 선수/팀 0과 시즌 준비 상태를 확인했다.
+
+선수 등록·팀 운영·양 팀 결과 확인·심판 최종 승인·랭킹 반영은 별도 localhost 합성 데이터 서버에서 검증했다. 실제 프로필 수집이나 리그 알림 발송을 하지 않았으며, 최초 운영진·수신자·메일 트리거는 아직 설정하지 않았다. 인증 12개 테스트에 리그/저장소 테스트가 추가된 것으로 실제 Google 시험 범위가 자동으로 확대되는 것은 아니다. [구현·운영 인계](LEAGUE_OPERATIONS.md)의 남은 과제를 따른다.

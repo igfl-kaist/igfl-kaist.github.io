@@ -1,53 +1,43 @@
 # IGFL 홈페이지
 
-KAIST 이메일 인증으로 선수를 등록하고 팀들이 자율적으로 치른 공식 경기 결과를 바탕으로 Elo 파워랭킹을 제공하는 홈페이지다.
+ISE & GSDS Futsal League. KAIST 이메일 로그인, 선수 등록, 팀 운영, 자율 경기·심판 배정, 결과 확인과 Elo 파워랭킹을 제공한다. 흰 배경과 짙은 초록색 포인트의 승인 디자인을 따른다.
 
-2026년 10월 16일 구현을 시작했다. [별도 비공개 저장소](https://github.com/noeyusiohc/igfl)에 소개·이메일 로그인 화면과 Apps Script 인증 서버의 첫 구현을 둔다. 로컬 브라우저와 실제 Google 배포 서버 사이에서 이메일 발송·수신, 오입력 거부, 정상 로그인, 새로고침 후 세션 유지, 로그아웃을 확인했다. 자동 테스트 12개도 통과했다. 전체 리그 운영 기능은 아직 구현 전이며 공식 선수 정보를 받지 않는다.
+2026-10-16 기준 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 자동 테스트 **36개 통과**. 합성 데이터 브라우저에서 양 팀 기록 제출 → 양 팀 확인 → 내부 심판 최종 승인 → 랭킹 갱신을 확인했다. 실제 Apps Script 서버의 공개 리그 조회도 로컬 브라우저에서 연결했다. 실제 이메일 로그인 검증은 [인증 배포 기록](docs/AUTH_DEPLOYMENT.md)에 있다.
 
-현재 GitHub 계정의 Pages 설정은 비공개 저장소 배포에 업그레이드 또는 공개 전환을 요구한다. 사용자는 나중에 Pages 지원 플랜을 준비하기로 했으며 저장소는 비공개로 유지한다. **로컬 홈페이지 → Apps Script → 수신 메일 → 로그인은 확인했으며, 실제 GitHub Pages 출처의 검증은 아직 남아 있다.**
+**공개 배포 대상:** [IGFL 홈페이지](https://noeyusiohc.github.io/igfl/). 사용자의 최신 지시로 [저장소](https://github.com/noeyusiohc/igfl)를 공개하고 GitHub Actions 기반 Pages를 설정했다. 배포 결과는 Actions 실행과 아래 인증 배포 기록에서 확인한다. 기존 개인 홈페이지는 유지한다.
+
+**리그 운영 개통 전 상태다.** 개인정보 정책이 미정이라 실제 선수 가입은 서버에서 닫혀 있다. 시즌도 닫혀 있고 최초 운영진·알림 수신자·메일 작업은 아직 설정하지 않았다. 공개 홈페이지에는 실제 선수·팀 데이터나 합성 검증 계정 선택기를 넣지 않는다.
 
 ## 로컬 실행
 
-Node.js 22 이상, 외부 패키지 설치 없이 실행한다.
+Node.js 22 이상. 외부 패키지 설치는 필요 없다.
 
 ```sh
 node --test
 node scripts/build.mjs
-node scripts/serve.mjs
+node scripts/dev.mjs
 ```
 
-`http://127.0.0.1:4173`에서 확인한다. `config.json`의 `authEndpoint`가 비어 있으면 메일을 보내지 않고 준비 중 안내를 표시한다. 실제 연결 방법과 검증 상태는 [인증 배포 안내](docs/AUTH_DEPLOYMENT.md)를 따른다. `dist/`에는 공개 프런트엔드만 복사한다.
+- `http://127.0.0.1:4173/`: 실제 Apps Script 인증·리그 서버를 사용하는 홈페이지. 현재는 빈 리그와 닫힌 가입 상태다.
+- `http://127.0.0.1:4173/preview/`: 합성 데이터와 검증 계정 선택기가 있는 별도 개발 화면. 실제 메일을 보내지 않는다. 선수·주장·심판·운영진 역할을 전환해 볼 수 있다.
+
+개발 화면은 `.local/league-dev.json`에 합성 데이터를 저장한다. 재시작하면 검증 계정을 다시 선택한다. 초기 샘플로 돌아가려면 서버 종료 후 해당 파일을 다른 이름으로 이동하고 다시 실행한다. 실제 개인정보를 넣지 않는다. 개발 API는 localhost에만 바인딩하며 **외부에 배포하지 않는다.**
+
+`dist/`에는 공개 프런트엔드만 들어간다. `server/`, `dev/`, 테스트, Apps Script, `.local/`은 복사되지 않는다. 공개 코드에는 비밀키와 선수 정보를 두지 않는다.
+
+## 서버와 배포
+
+```sh
+node scripts/build-gas.mjs
+```
+
+`.local/AppsScript.gs`를 생성한다. Apps Script 편집기의 `Code.gs`에 넣고 기존 배포의 새 버전을 만든다. 같은 리그 규칙을 Node 검증 서버와 Apps Script에서 실행하며, 실제 데이터는 기존 비공개 인증 시트의 `LeagueSnapshots` 탭에 보관한다. 초기화·설정·장애 대응·용량 제한은 [리그 운영 인계](docs/LEAGUE_OPERATIONS.md)를 따른다.
+
+GitHub Actions는 PR에서 테스트·빌드를 실행한다. Pages Source는 GitHub Actions이며 저장소 변수 `PAGES_ENABLED=true`로 main 배포를 활성화했다. main 병합/푸시 또는 main의 수동 실행 시 정적 `dist/`만 배포한다. 실제 가입 설정은 Apps Script 서버에서 별도로 관리한다. 유료 플랜·대체 호스팅·기존 개인 홈페이지 설정은 변경하지 않는다.
 
 ## 문서
 
-- [Codex agent 지침](AGENTS.md): 구현자가 먼저 읽을 규칙과 작업 범위.
-- [최종 구현 지침서](docs/IMPLEMENTATION_BRIEF.md): 지금까지 확정한 기능과 디자인, 역할·승인 흐름, 구현·검증과 후속 요청문.
-- [서비스 기획안](docs/PRODUCT_SPEC.md): 확정된 참가·팀·경기·승인·공개 범위와 인수 기준.
-- [결정할 사항과 구현 제안](docs/DECISIONS.md): 미정 규칙, 기술 구성, 데이터 구조와 구현 순서.
-- [Apps Script 인증 설계](docs/AUTH_APPS_SCRIPT.md): 이메일 코드 로그인·세션·CORS·할당량과 검증 범위.
-- [Elo와 개인 기록 규칙](docs/RATING_POLICY.md): 위임에 따라 채택한 계산값·최근 5경기·공동순위·심판 공로.
-- [UI와 UX 기획](docs/UI_UX.md): 소개 홈과 하위 페이지 구조, 카드와 필터, 개인 기록의 표시 원칙.
-- [승인 시안과 사용 안내](docs/design/README.md): 같은 디자인을 다른 환경에서 구현하기 위한 보관 원본.
-
-## 이어서 구현할 때
-
-아래 문서와 현재 검증 상태를 읽고 계속 진행한다. 저장소 소유자와 서비스 설정 등 미정 값은 임의로 채우지 않는다.
-
-```text
-이 저장소의 AGENTS.md와 docs/IMPLEMENTATION_BRIEF.md를 먼저 읽고
-docs/PRODUCT_SPEC.md, docs/UI_UX.md, docs/DECISIONS.md 및
-docs/design/igfl-approved-mockup.html을 기준으로 IGFL 홈페이지 구현을 시작해줘.
-
-승인된 디자인과 확정된 운영 규칙을 유지해줘.
-지금 필요한 미정 사항만 묶어 확인하면서 독립적인 작업은 진행해줘.
-기존 개인 GitHub 홈페이지와 로컬 Git 저장소를 보존해줘.
-인증·권한·영구 저장·이메일·심판 배정·경기 확정을 실제 백엔드에 연결하고,
-docs/IMPLEMENTATION_BRIEF.md의 검증 기준을 확인해줘.
-외부 저장소·계정·배포는 이 대화에서 정한 소유자와 허용 범위를 따라줘.
-```
-
-## 저장소와 호스팅 방향
-
-사용자의 기존 개인 계정의 `noeyusiohc/igfl` 비공개 저장소를 사용한다. 기존 개인 홈페이지는 보존한다. 사용자 허락 없이 공개 전환하거나 플랜·유료 서비스를 추가하지 않는다. 실제 호스트와 전체 리그 데이터 저장소는 미정이다.
-
-공개 저장소의 GitHub Pages는 무료로 사용할 수 있으며 기본 주소는 `<계정>.github.io/<저장소>/`다. 비공개 저장소 Pages는 지원 유료 플랜이 필요하다. 인증·데이터베이스·메일·이미지 저장소는 별도 서비스다. 이메일 6자리 OTP 로그인은 Apps Script와 비공개 Sheets를 우선 사용하며 실제 Pages CORS·세션·할당량을 검증한다. 비밀번호는 사용하지 않는다. 상세한 공식 출처와 구분은 [호스팅 결정 사항](docs/DECISIONS.md)에 있다.
+- [개발 지침](AGENTS.md), [전체 구현 지침](docs/IMPLEMENTATION_BRIEF.md)
+- [서비스 규칙](docs/PRODUCT_SPEC.md), [디자인과 UX](docs/UI_UX.md), [승인 시안](docs/design/README.md)
+- [Elo와 개인 기록](docs/RATING_POLICY.md), [미정 사항](docs/DECISIONS.md)
+- [리그 구현·운영 인계](docs/LEAGUE_OPERATIONS.md), [인증 설계](docs/AUTH_APPS_SCRIPT.md), [실제 인증 배포 기록](docs/AUTH_DEPLOYMENT.md)

@@ -1,0 +1,14 @@
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+await mkdir(".local", { recursive: true });
+const files = [
+  "apps-script/Code.gs",
+  "server/league.mjs",
+  "server/images.mjs",
+  "apps-script/LeagueAdapter.gs",
+  "apps-script/OwnerSetup.gs",
+];
+const source = (await Promise.all(files.map((f) => readFile(f, "utf8"))))
+  .map((s) => s.replace(/^export /gm, ""))
+  .join("\n");
+await writeFile(".local/AppsScript.gs", source);
+console.log("Apps Script bundle: .local/AppsScript.gs");
