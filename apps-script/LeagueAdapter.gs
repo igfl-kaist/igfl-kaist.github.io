@@ -1,7 +1,13 @@
-function leagueSettings_() {
-  const p = PropertiesService.getScriptProperties();
+// Only editor-owned fixtures supply properties; public requests cannot supply config.
+function storageProperties_(config) {
+  return config?.properties || PropertiesService.getScriptProperties();
+}
+function leagueSettings_(config) {
+  const p = storageProperties_(config);
   return {
-    registrationOpen: p.getProperty("LEAGUE_REGISTRATION_OPEN") === "true",
+    registrationOpen:
+      p.getProperty("LEAGUE_REGISTRATION_OPEN") === "true" &&
+      p.getProperty("PRIVACY_STORAGE_APPROVED") === "true",
     privacyVersion: p.getProperty("PRIVACY_VERSION") || "igfl-2026-10-16-v1",
     privacyNotice:
       p.getProperty("PRIVACY_NOTICE") || League.policies.settings.privacyNotice,
@@ -16,9 +22,9 @@ function leagueSettings_() {
   };
 }
 function loadLeague_(config) {
-  const props = PropertiesService.getScriptProperties(),
+  const props = storageProperties_(config),
     active = props.getProperty("LEAGUE_ACTIVE_SNAPSHOT");
-  if (!active) return League.createState(leagueSettings_());
+  if (!active) return League.createState(leagueSettings_(config));
   const pointer = JSON.parse(active),
     sheet = table_(config, "LeagueSnapshots");
   const rows = sheet.getRange(pointer.row, 1, pointer.count, 1).getValues();
@@ -29,7 +35,7 @@ function loadLeague_(config) {
   ).getDataAsString("UTF-8");
   if (raw.length !== pointer.length) fail_("STORAGE_ERROR");
   const state = JSON.parse(raw);
-  state.settings = Object.assign(state.settings, leagueSettings_());
+  state.settings = Object.assign(state.settings, leagueSettings_(config));
   return state;
 }
 function saveLeague_(config, state) {
@@ -48,7 +54,7 @@ function saveLeague_(config, state) {
     .setValues(chunks);
   SpreadsheetApp.flush();
   // The only commit point. Incomplete snapshots never replace the active pointer.
-  PropertiesService.getScriptProperties().setProperty(
+  storageProperties_(config).setProperty(
     "LEAGUE_ACTIVE_SNAPSHOT",
     JSON.stringify({
       row,
@@ -62,9 +68,7 @@ function leagueActor_(config, input) {
   if (!input.sessionToken) return null;
   const session = findSession_(config, input).value;
   const admins = (
-    PropertiesService.getScriptProperties().getProperty(
-      "LEAGUE_ADMIN_USER_IDS",
-    ) || ""
+    storageProperties_(config).getProperty("LEAGUE_ADMIN_USER_IDS") || ""
   ).split(",");
   return {
     userId: session.userId,
@@ -105,11 +109,9 @@ function leagueApi_(input) {
   });
 }
 function compactLeagueSnapshots_(config) {
-  const pointer = JSON.parse(
-    PropertiesService.getScriptProperties().getProperty(
-      "LEAGUE_ACTIVE_SNAPSHOT",
-    ),
-  );
+  const raw = storageProperties_(config).getProperty("LEAGUE_ACTIVE_SNAPSHOT");
+  if (!raw) return;
+  const pointer = JSON.parse(raw);
   const sheet = table_(config, "LeagueSnapshots");
   if (pointer.row > 2) sheet.getRange(2, 1, pointer.row - 2, 1).clearContent();
   const tail = pointer.row + pointer.count,
@@ -118,7 +120,7 @@ function compactLeagueSnapshots_(config) {
   SpreadsheetApp.flush();
 }
 function completeAccountErasure_(config) {
-  const p = PropertiesService.getScriptProperties(),
+  const p = storageProperties_(config),
     raw = p.getProperty("PENDING_ACCOUNT_ERASURE");
   if (!raw) return;
   const task = JSON.parse(raw),
@@ -131,23 +133,35 @@ function completeAccountErasure_(config) {
   compactLeagueSnapshots_(config);
   p.deleteProperty("PENDING_ACCOUNT_ERASURE");
 }
-// Owner may attach a time trigger. Does not open registration or send mail.
+// Owner attaches a time trigger in the editor. No mail, registration or season changes.
 function runPrivacyMaintenance() {
-  locked_(() => {
-    const config = config_();
+  return locked_(() => privacyMaintenance_(config_(), Date.now()));
+}
+function privacyMaintenance_(config, now) {
+  const p = storageProperties_(config);
+  const previous = JSON.parse(
+    p.getProperty("PRIVACY_MAINTENANCE_STATUS") || "{}",
+  );
+  const status = {
+    status: "running",
+    startedAt: now,
+    lastSucceededAt: previous.lastSucceededAt || null,
+    runs: (previous.runs || 0) + 1,
+  };
+  p.setProperty("PRIVACY_MAINTENANCE_STATUS", JSON.stringify(status));
+  try {
     completeAccountErasure_(config);
-    prune_(config, Date.now());
+    const before = {};
+    for (const name of ["Challenges", "Sessions", "Accounts"])
+      before[name] = read_(config, name).length;
+    prune_(config, now);
     const state = loadLeague_(config);
-    if (League.maintain(state, Date.now())) {
+    if (League.maintain(state, now)) {
       state.revision++;
       saveLeague_(config, state);
     }
     const registered = new Set(state.profiles.map((p) => p.id));
-    (
-      PropertiesService.getScriptProperties().getProperty(
-        "LEAGUE_ADMIN_USER_IDS",
-      ) || ""
-    )
+    (p.getProperty("LEAGUE_ADMIN_USER_IDS") || "")
       .split(",")
       .filter(Boolean)
       .forEach((id) => registered.add(id));
@@ -155,11 +169,31 @@ function runPrivacyMaintenance() {
     for (let i = rows.length - 1; i >= 0; i--)
       if (
         !registered.has(rows[i].value.userId) &&
-        rows[i].value.lastSeenAt < Date.now() - 86400000
+        rows[i].value.lastSeenAt <= now - 86400000
       )
         table_(config, "Accounts").deleteRow(rows[i].row);
     compactLeagueSnapshots_(config);
-  });
+    const removed = {};
+    for (const name of ["Challenges", "Sessions", "Accounts"])
+      removed[name] = before[name] - read_(config, name).length;
+    Object.assign(status, {
+      status: "succeeded",
+      finishedAt: Date.now(),
+      lastSucceededAt: now,
+      removed,
+    });
+    p.setProperty("PRIVACY_MAINTENANCE_STATUS", JSON.stringify(status));
+    return status;
+  } catch (_) {
+    // Provider messages can contain PII. Keep only a fixed failure code.
+    Object.assign(status, {
+      status: "failed",
+      finishedAt: Date.now(),
+      error: "PRIVACY_MAINTENANCE_FAILED",
+    });
+    p.setProperty("PRIVACY_MAINTENANCE_STATUS", JSON.stringify(status));
+    throw new Error("PRIVACY_MAINTENANCE_FAILED");
+  }
 }
 function initializeLeagueStorage() {
   locked_(() => {
