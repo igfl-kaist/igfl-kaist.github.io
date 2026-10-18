@@ -136,6 +136,7 @@ export function harness() {
     "apps-script/Code.gs",
     "apps-script/AuthProperties.gs",
     "apps-script/StorageRotation.gs",
+    "src/privacy-content.mjs",
     "server/policies.mjs",
     "server/league.mjs",
     "server/images.mjs",
