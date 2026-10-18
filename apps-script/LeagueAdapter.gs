@@ -1,7 +1,3 @@
-// Only editor-owned fixtures supply properties; public requests cannot supply config.
-function storageProperties_(config) {
-  return config?.properties || PropertiesService.getScriptProperties();
-}
 function leagueSettings_(config) {
   const p = storageProperties_(config);
   return {
@@ -22,8 +18,9 @@ function leagueSettings_(config) {
   };
 }
 function loadLeague_(config) {
-  const props = storageProperties_(config),
-    active = props.getProperty("LEAGUE_ACTIVE_SNAPSHOT");
+  const active = storageProperties_(config).getProperty(
+    "LEAGUE_ACTIVE_SNAPSHOT",
+  );
   if (!active) return League.createState(leagueSettings_(config));
   const pointer = JSON.parse(active),
     sheet = table_(config, "LeagueSnapshots");
@@ -38,9 +35,8 @@ function loadLeague_(config) {
   state.settings = Object.assign(state.settings, leagueSettings_(config));
   return state;
 }
-function saveLeague_(config, state) {
-  const sheet = table_(config, "LeagueSnapshots"),
-    raw = JSON.stringify(state),
+function writeSnapshot_(sheet, state) {
+  const raw = JSON.stringify(state),
     size = 32000,
     chunks = [];
   if (raw.length > 4000000) fail_("STORAGE_LIMIT");
@@ -53,16 +49,21 @@ function saveLeague_(config, state) {
     .setNumberFormat("@")
     .setValues(chunks);
   SpreadsheetApp.flush();
-  // The only commit point. Incomplete snapshots never replace the active pointer.
-  storageProperties_(config).setProperty(
-    "LEAGUE_ACTIVE_SNAPSHOT",
-    JSON.stringify({
-      row,
-      count: chunks.length,
-      length: raw.length,
-      revision: state.revision,
-    }),
-  );
+  return {
+    row,
+    count: chunks.length,
+    length: raw.length,
+    revision: state.revision,
+  };
+}
+function saveLeague_(config, state) {
+  const p = storageProperties_(config),
+    old = JSON.parse(p.getProperty("LEAGUE_ACTIVE_SNAPSHOT") || "null");
+  const pointer = writeSnapshot_(table_(config, "LeagueSnapshots"), state);
+  // File ID and chunk pointer are committed together, including after a rotation.
+  if (old?.sheetId) pointer.sheetId = old.sheetId;
+  if (old?.cleanupId) pointer.cleanupId = old.cleanupId;
+  p.setProperty("LEAGUE_ACTIVE_SNAPSHOT", JSON.stringify(pointer));
 }
 function leagueActor_(config, input) {
   if (!input.sessionToken) return null;
@@ -79,13 +80,14 @@ function leagueActor_(config, input) {
 function leagueApi_(input) {
   const config = config_();
   return locked_(() => {
+    resumeStorageRotation_(config);
     completeAccountErasure_(config);
     let state = loadLeague_(config);
     const actor = leagueActor_(config, input);
     if (League.maintain(state, Date.now())) {
       state.revision++;
       saveLeague_(config, state);
-      compactLeagueSnapshots_(config);
+      rotateLeagueStorage_(config, "retention");
     }
     if (input.operation === "view") return League.privateView(state, actor);
     if (input.operation === "command") {
@@ -97,7 +99,7 @@ function leagueApi_(input) {
           validateTeamImage(data, (base64) => Utilities.base64Decode(base64)),
       });
       if (out.result.withdrawn)
-        PropertiesService.getScriptProperties().setProperty(
+        storageProperties_(config).setProperty(
           "PENDING_ACCOUNT_ERASURE",
           JSON.stringify({ userId: actor.userId, email: actor.email }),
         );
@@ -123,14 +125,23 @@ function completeAccountErasure_(config) {
   const p = storageProperties_(config),
     raw = p.getProperty("PENDING_ACCOUNT_ERASURE");
   if (!raw) return;
-  const task = JSON.parse(raw),
-    state = loadLeague_(config);
-  League.policies.upgrade(state);
-  League.policies.erase(state, task.userId);
-  state.revision++;
-  saveLeague_(config, state);
-  eraseAuthAccount_(config, task.userId, task.email);
-  compactLeagueSnapshots_(config);
+  const task = JSON.parse(raw);
+  if (!task.cleanupId) {
+    task.cleanupId = "erase-" + Date.now() + "-" + loadLeague_(config).revision;
+    p.setProperty("PENDING_ACCOUNT_ERASURE", JSON.stringify(task));
+  }
+  resumeStorageRotation_(config);
+  const pointer = JSON.parse(p.getProperty("LEAGUE_ACTIVE_SNAPSHOT") || "null");
+  if (pointer?.cleanupId !== task.cleanupId) {
+    const state = loadLeague_(config);
+    League.policies.upgrade(state);
+    League.policies.erase(state, task.userId);
+    state.revision++;
+    saveLeague_(config, state);
+    eraseAuthAccount_(config, task.userId, task.email);
+    compactLeagueSnapshots_(config);
+    rotateLeagueStorage_(config, "withdrawal", task.cleanupId);
+  }
   p.deleteProperty("PENDING_ACCOUNT_ERASURE");
 }
 // Owner attaches a time trigger in the editor. No mail, registration or season changes.
@@ -150,6 +161,7 @@ function privacyMaintenance_(config, now) {
   };
   p.setProperty("PRIVACY_MAINTENANCE_STATUS", JSON.stringify(status));
   try {
+    resumeStorageRotation_(config);
     completeAccountErasure_(config);
     const before = {};
     for (const name of ["Challenges", "Sessions", "Accounts"])
@@ -159,6 +171,7 @@ function privacyMaintenance_(config, now) {
     if (League.maintain(state, now)) {
       state.revision++;
       saveLeague_(config, state);
+      rotateLeagueStorage_(config, "retention");
     }
     const registered = new Set(state.profiles.map((p) => p.id));
     (p.getProperty("LEAGUE_ADMIN_USER_IDS") || "")
@@ -171,7 +184,7 @@ function privacyMaintenance_(config, now) {
         !registered.has(rows[i].value.userId) &&
         rows[i].value.lastSeenAt <= now - 86400000
       )
-        table_(config, "Accounts").deleteRow(rows[i].row);
+        deleteRecord_(config, "Accounts", rows[i].row);
     compactLeagueSnapshots_(config);
     const removed = {};
     for (const name of ["Challenges", "Sessions", "Accounts"])
@@ -216,6 +229,8 @@ function processLeagueEmails() {
   const config = config_();
   for (let n = 0; n < 10; n++) {
     const job = locked_(() => {
+      resumeStorageRotation_(config);
+      completeAccountErasure_(config);
       const s = loadLeague_(config),
         now = Date.now(),
         j = s.outbox.find(
@@ -277,6 +292,8 @@ function processLeagueEmails() {
     }
     // MailApp has no idempotency key: an exception can follow delivery. Never blindly resend.
     locked_(() => {
+      resumeStorageRotation_(config);
+      completeAccountErasure_(config);
       const s = loadLeague_(config),
         j = s.outbox.find((j) => j.id === job.id);
       j.status = success ? "sent" : "uncertain";

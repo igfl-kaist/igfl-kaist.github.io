@@ -1,7 +1,7 @@
 /* IGFL email auth. No passwords, raw OTPs, or raw session tokens are stored. */
 const IGFL_ = Object.freeze({
   protocol: "igfl-auth-v1",
-  version: "0.3.1",
+  version: "0.4.0",
   codeTtl: 300000,
   sessionTtl: 43200000,
   cooldown: 60000,
@@ -136,7 +136,12 @@ function locked_(callback) {
   }
 }
 function table_(config, name) {
-  const db = SpreadsheetApp.openById(config.sheetId);
+  const pointer = JSON.parse(
+    storageProperties_(config).getProperty("LEAGUE_ACTIVE_SNAPSHOT") || "null",
+  );
+  const db = SpreadsheetApp.openById(
+    config.pinSheet ? config.sheetId : pointer?.sheetId || config.sheetId,
+  );
   let sheet = db.getSheetByName(name);
   if (!sheet && name === "Accounts") {
     sheet = db.insertSheet(name);
@@ -144,23 +149,6 @@ function table_(config, name) {
   }
   if (!sheet) fail_("NOT_CONFIGURED");
   return sheet;
-}
-function read_(config, name) {
-  const sheet = table_(config, name),
-    count = sheet.getLastRow() - 1;
-  if (count < 1) return [];
-  return sheet
-    .getRange(2, 1, count, 1)
-    .getValues()
-    .map((row, i) => ({ row: i + 2, value: JSON.parse(row[0]) }));
-}
-function append_(config, name, value) {
-  table_(config, name).appendRow([JSON.stringify(value)]);
-  SpreadsheetApp.flush();
-}
-function write_(config, name, row, value) {
-  table_(config, name).getRange(row, 1).setValue(JSON.stringify(value));
-  SpreadsheetApp.flush();
 }
 function hmac_(config, text) {
   return Utilities.computeHmacSha256Signature(
@@ -184,7 +172,7 @@ function safeEqual_(left, right) {
   return difference === 0;
 }
 function unique_(config, label) {
-  const properties = PropertiesService.getScriptProperties();
+  const properties = storageProperties_(config);
   const counter = Number(properties.getProperty("NONCE_COUNTER") || 0) + 1;
   properties.setProperty("NONCE_COUNTER", String(counter));
   return hmac_(
@@ -222,7 +210,7 @@ function prune_(config, now) {
           (record.revokedAt || record.expiresAt <= now)) ||
         (record.createdAt < now - 86400000 && record.expiresAt <= now)
       )
-        table_(config, name).deleteRow(rows[i].row);
+        deleteRecord_(config, name, rows[i].row);
       else if (
         name === "Challenges" &&
         record.codeHash &&
@@ -327,7 +315,7 @@ function requestCode_(input) {
   };
 }
 function accountFor_(config, email, now) {
-  const pending = PropertiesService.getScriptProperties().getProperty(
+  const pending = storageProperties_(config).getProperty(
     "PENDING_ACCOUNT_ERASURE",
   );
   if (pending && JSON.parse(pending).email === email)
@@ -356,7 +344,7 @@ function eraseAuthAccount_(config, userId, email) {
     const rows = read_(config, name);
     for (let i = rows.length - 1; i >= 0; i--)
       if (rows[i].value.email === email || rows[i].value.userId === userId)
-        table_(config, name).deleteRow(rows[i].row);
+        deleteRecord_(config, name, rows[i].row);
   }
   const p = config.properties || PropertiesService.getScriptProperties();
   const admins = (p.getProperty("LEAGUE_ADMIN_USER_IDS") || "").split(",");
@@ -405,6 +393,7 @@ function verifyCode_(input) {
     }
     // Consume before creating the session. A failed later write cannot replay the OTP.
     challenge.consumedAt = now;
+    delete challenge.codeHash;
     write_(config, "Challenges", row.row, challenge);
     const token = unique_(config, "session");
     const account = accountFor_(config, email, now);
@@ -430,7 +419,7 @@ function findSession_(config, input) {
   );
   if (!row || row.value.revokedAt || row.value.expiresAt <= Date.now())
     fail_("SESSION_EXPIRED");
-  const pending = PropertiesService.getScriptProperties().getProperty(
+  const pending = storageProperties_(config).getProperty(
     "PENDING_ACCOUNT_ERASURE",
   );
   if (pending && JSON.parse(pending).userId === row.value.userId)
@@ -508,4 +497,5 @@ function initializeAuth_() {
   sheet.insertSheet("Sessions").appendRow(["record_json"]);
   sheet.insertSheet("Accounts").appendRow(["record_json"]);
   properties.setProperty("AUTH_SHEET_ID", sheet.getId());
+  properties.setProperty("AUTH_STORAGE_VERSION", "properties-v1");
 }

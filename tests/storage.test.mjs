@@ -38,6 +38,9 @@ function storage({ send = () => {}, quota = () => 100 } = {}) {
     League,
     Date,
     config_: () => ({}),
+    storageProperties_: () => c.PropertiesService.getScriptProperties(),
+    resumeStorageRotation_: () => {},
+    rotateLeagueStorage_: () => {},
     locked_: (fn) => fn(),
     MailApp: { sendEmail: send, getRemainingDailyQuota: quota },
     PropertiesService: {
