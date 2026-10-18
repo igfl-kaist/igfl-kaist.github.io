@@ -3,6 +3,8 @@ import { Script } from "node:vm";
 await mkdir(".local", { recursive: true });
 const files = [
   "apps-script/Code.gs",
+  "apps-script/AuthProperties.gs",
+  "apps-script/StorageRotation.gs",
   "server/policies.mjs",
   "server/league.mjs",
   "server/images.mjs",
