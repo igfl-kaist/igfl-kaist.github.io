@@ -1,7 +1,7 @@
 /* IGFL email auth. No passwords, raw OTPs, or raw session tokens are stored. */
 const IGFL_ = Object.freeze({
   protocol: "igfl-auth-v1",
-  version: "0.3.0",
+  version: "0.3.1",
   codeTtl: 300000,
   sessionTtl: 43200000,
   cooldown: 60000,
@@ -358,7 +358,7 @@ function eraseAuthAccount_(config, userId, email) {
       if (rows[i].value.email === email || rows[i].value.userId === userId)
         table_(config, name).deleteRow(rows[i].row);
   }
-  const p = PropertiesService.getScriptProperties();
+  const p = config.properties || PropertiesService.getScriptProperties();
   const admins = (p.getProperty("LEAGUE_ADMIN_USER_IDS") || "").split(",");
   if (admins.includes(userId))
     p.setProperty(
