@@ -2,7 +2,7 @@
 
 ISE & GSDS Futsal League. KAIST 이메일 로그인, 선수 등록, 팀 운영, 자율 경기·심판 배정, 결과 확인과 Elo 파워랭킹을 제공한다. 흰 배경과 짙은 초록색 포인트의 승인 디자인을 따른다.
 
-2026-10-18 기준 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 자동 테스트 **70개 통과**. 합성 데이터 브라우저에서 양 팀 기록 제출 → 양 팀 확인 → 내부 심판 최종 승인 → 랭킹 갱신을 확인했다. 실제 Apps Script 서버의 공개 리그 조회도 로컬 브라우저에서 연결했다. 정확한 `@kaist.ac.kr` 이메일 인증을 허용했으며 실제 선수 가입과 시즌은 계속 닫혀 있다. 실제 이메일 로그인 검증은 [인증 배포 기록](docs/AUTH_DEPLOYMENT.md)에 있다.
+2026-10-18 기준 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 자동 테스트 **72개 통과**. 합성 데이터 브라우저에서 양 팀 기록 제출 → 양 팀 확인 → 내부 심판 최종 승인 → 랭킹 갱신을 확인했다. 실제 Apps Script 서버의 공개 리그 조회도 로컬 브라우저에서 연결했다. 정확한 `@kaist.ac.kr` 이메일 인증을 허용했으며 실제 선수 가입과 시즌은 계속 닫혀 있다. 실제 이메일 로그인 검증은 [인증 배포 기록](docs/AUTH_DEPLOYMENT.md)에 있다.
 
 **공개 홈페이지:** [IGFL](https://noeyusiohc.github.io/igfl/). 2026-10-16 사용자 승인으로 [저장소](https://github.com/noeyusiohc/igfl)를 공개하고 PR #1을 main에 병합했다. [Pages 배포 실행](https://github.com/noeyusiohc/igfl/actions/runs/38854152477)의 테스트·빌드·배포가 모두 성공했다. 실제 Pages 브라우저에서 소개·랭킹 데이터·인증 서버 health 응답을 확인했다. 기존 개인 홈페이지와 별도 프로젝트 경로를 사용한다.
 
@@ -46,3 +46,7 @@ GitHub Actions는 PR에서 테스트·빌드를 실행한다. Pages Source는 Gi
 - [Elo와 개인 기록](docs/RATING_POLICY.md), [미정 사항](docs/DECISIONS.md)
 - [리그 구현·운영 인계](docs/LEAGUE_OPERATIONS.md), [인증 설계](docs/AUTH_APPS_SCRIPT.md), [실제 인증 배포 기록](docs/AUTH_DEPLOYMENT.md)
 - [개인정보·가입 동의 검토안](docs/PRIVACY_DRAFT.md), [경기·예외 규칙 검토안](docs/MATCH_RULES_DRAFT.md): 최신 사용자 결정과 남은 개통 준비
+
+## 개인정보 안내
+
+[처리방침](https://noeyusiohc.github.io/igfl/#privacy)과 [가입 동의 안내](https://noeyusiohc.github.io/igfl/#consent)를 로그인 없이 제공한다. 공개 운영 문의처는 sy.choi@kaist.ac.kr이다. 학교·Google에 확인할 질문은 [별도 목록](docs/PRIVACY_EXTERNAL_CHECKLIST.md)에 정리한다. 안내 게시와 실제 가입 개통은 별개이며 가입·시즌·리그 메일·저장소 승인 스위치는 계속 닫힌다.

@@ -1,3 +1,4 @@
+import { PRIVACY } from "./privacy-content.mjs";
 const e = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -395,16 +396,18 @@ export function createLeagueUI({
   }
   function registration() {
     const open = view.settings.registrationOpen;
+    const privacyContact = view.settings.operationsContact || PRIVACY.contact;
     content.innerHTML =
       heading(
         "JOIN THE LEAGUE",
         "선수 등록",
-        "학교 이메일 확인을 마쳤어요. 이제 우리 리그의 선수가 되어볼까요?",
+        "선수 등록에 필요한 정보와 동의 안내를 확인해 주세요.",
       ) +
       tabs() +
       (!open
         ? '<p class="notice">선수 모집 개통을 준비 중이에요. 지금은 실제 선수 정보를 입력받지 않아요.</p>'
         : "") +
+      `<p class="registration-notices"><a class="link" href="#privacy">개인정보 처리방침</a> · <a class="link" href="#consent">가입 동의 안내</a><br>운영 문의: <a class="link" href="mailto:${e(privacyContact)}">${e(privacyContact)}</a></p>` +
       form(
         "profile-form",
         `<div class="step-strip"><span>01 이메일 인증 완료</span><strong>02 선수 정보</strong><span>03 등록 완료</span></div><fieldset ${open ? "" : "disabled"}><div class="form-grid">${input("email", "인증한 이메일", "email", view.me.email, "readonly")}${input("name", "이름", "text", "", 'required maxlength="40"')}${select(
@@ -425,7 +428,7 @@ export function createLeagueUI({
             ["ISE", "ISE"],
             ["GSDS", "GSDS"],
           ],
-        )}</div>${select("teamId", "가입 문의할 팀 (선택)", [["", "무소속으로 시작하기"], ...view.teams.filter((t) => ["active", "paused"].includes(t.status)).map((t) => [t.id, t.name])])}</div><label class="check-line"><input type="checkbox" name="referee">심판으로도 함께할 수 있어요.</label><p class="notice">심판 수당은 경기당 20,000원이에요. 양 팀이 10,000원씩 심판에게 직접 지급해요.</p><div class="consent-box"><h3>개인정보 수집 및 이용 동의</h3><p>${e(view.settings.privacyNotice || "선수 자격 확인·리그 운영을 위한 개인정보 안내와 보관·삭제 기준을 확정 중이에요.")}</p><p class="caption muted">이름·연구실·소속 팀·심판 가능 표시는 공개하며 이메일·학번/사번·지도교수는 본인과 운영진만 열람해요.</p><label class="check-line"><input type="checkbox" name="consent" required>안내를 읽고 개인정보 수집·이용에 동의해요. (필수)</label></div><div class="consent-box"><h3>이름·연구실 및 리그 기록 공개 동의</h3><p>${e(view.settings.publicConsentNotice)}</p><label class="check-line"><input type="checkbox" name="publicConsent" required>이름·연구실과 리그 기록 공개에 동의해요. (필수)</label></div></fieldset>`,
+        )}</div>${select("teamId", "가입 문의할 팀 (선택)", [["", "무소속으로 시작하기"], ...view.teams.filter((t) => ["active", "paused"].includes(t.status)).map((t) => [t.id, t.name])])}</div><label class="check-line"><input type="checkbox" name="referee">심판으로도 함께할 수 있어요.</label><p class="notice">심판 수당은 경기당 20,000원이에요. 양 팀이 10,000원씩 심판에게 직접 지급해요.</p><div class="consent-box"><h3>개인정보 수집 및 이용 동의</h3><p class="caption muted">수집 목적·항목·보유 기간·거부 시 제한을 확인해 주세요. <a class="link" href="#consent">동의 안내 전문</a></p><p>${e(view.settings.privacyNotice || "선수 자격 확인·리그 운영을 위한 개인정보 안내와 보관·삭제 기준을 확정 중이에요.")}</p><p class="caption muted">이름·연구실·소속 팀·심판 가능 표시는 공개하며 이메일·학번/사번·지도교수는 본인과 운영진만 열람해요.</p><label class="check-line"><input type="checkbox" name="consent" required>안내를 읽고 개인정보 수집·이용에 동의해요. (필수)</label></div><div class="consent-box"><h3>이름·연구실 및 리그 기록 공개 동의</h3><p class="caption muted">모든 홈페이지 방문자에게 공개되는 범위예요. <a class="link" href="#privacy">처리방침 전문</a></p><p>${e(view.settings.publicConsentNotice)}</p><label class="check-line"><input type="checkbox" name="publicConsent" required>이름·연구실과 리그 기록 공개에 동의해요. (필수)</label></div></fieldset>`,
         "선수 등록 완료하기",
       );
     const f = content.querySelector("#profile-form");

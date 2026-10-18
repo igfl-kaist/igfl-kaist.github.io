@@ -1,3 +1,4 @@
+import { PRIVACY } from "../src/privacy-content.mjs";
 // Shared policies and additional league workflows. No private contacts or secrets.
 export const LeaguePolicies = (() => {
   const day = 86400000;
@@ -54,14 +55,13 @@ export const LeaguePolicies = (() => {
   const closed = (m) =>
     ["cancelled", "abandoned", "forfeit"].includes(m.status);
   const settings = {
-    publicConsentVersion: "igfl-public-2026-10-16-v1",
-    publicConsentNotice:
-      "IGFL 홈페이지의 모든 방문자에게 이름·소속 연구실·소속 팀·대표 역할·심판 가능 표시와 개인 득점·심판 활동 집계 기록을 공개합니다. 회원 유지 중 공개하며 개인 시즌 기록은 시즌 종료 후 최대 2년 이내 유지합니다. 회원 탈퇴 또는 공개 동의 철회 시 공개를 중단하고 개인 식별 정보를 삭제합니다. 공개 동의를 거부하면 선수로 등록할 수 없습니다. 인터넷 방문자가 복사한 외부 사본은 회수하기 어려울 수 있습니다.",
+    publicConsentVersion: PRIVACY.publicVersion,
+    publicConsentNotice: PRIVACY.publicNotice,
+    privacyVersion: PRIVACY.collectionVersion,
     clockMode: "running",
     refereeCount: 1,
     seasonEndsAt: null,
-    privacyNotice:
-      "회원 확인·참가 자격 및 중복 등록 확인·팀과 경기 운영·문의 처리를 위해 이름, KAIST 이메일, 학번 또는 사번, 참가 자격, 소속 학과·부서·연구실, 지도교수(해당자), 팀 소속과 경기 기록을 수집·이용합니다. 기본 정보는 회원 탈퇴·동의 철회·서비스 종료까지 보유하며 해당 사유 발생 시 지체 없이 파기합니다. 개인 시즌 기록은 회원 유지 중이며 시즌 종료 후 최대 2년 이내 보관합니다. 개인을 식별할 수 없는 팀 경기 결과와 Elo는 보존할 수 있습니다. 필수 정보의 수집·이용에 동의하지 않으면 선수 등록과 회원 기능 이용이 제한됩니다.",
+    privacyNotice: PRIVACY.collectionNotice,
   };
   function upgrade(s) {
     let changed = false;

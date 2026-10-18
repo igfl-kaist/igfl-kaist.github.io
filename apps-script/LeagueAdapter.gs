@@ -4,7 +4,9 @@ function leagueSettings_(config) {
     registrationOpen:
       p.getProperty("LEAGUE_REGISTRATION_OPEN") === "true" &&
       p.getProperty("PRIVACY_STORAGE_APPROVED") === "true",
-    privacyVersion: p.getProperty("PRIVACY_VERSION") || "igfl-2026-10-16-v1",
+    privacyVersion:
+      p.getProperty("PRIVACY_VERSION") ||
+      League.policies.settings.privacyVersion,
     privacyNotice:
       p.getProperty("PRIVACY_NOTICE") || League.policies.settings.privacyNotice,
     publicConsentVersion: League.policies.settings.publicConsentVersion,

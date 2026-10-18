@@ -43,3 +43,34 @@ function allowKaistEmailAuthentication() {
   });
   return inspectRuntimeStatus();
 }
+
+/** Owner-only publication setup. It never grants privacy approval or opens the league. */
+function configurePrivacyNotices() {
+  return locked_(() => {
+    const p = PropertiesService.getScriptProperties();
+    if (
+      [
+        "LEAGUE_REGISTRATION_OPEN",
+        "PRIVACY_STORAGE_APPROVED",
+        "LEAGUE_SEASON_OPEN",
+        "LEAGUE_EMAILS_ENABLED",
+      ].some((k) => p.getProperty(k) === "true")
+    )
+      fail_("CLOSE_LEAGUE_BEFORE_NOTICE_SETUP");
+    p.setProperty("OPERATIONS_CONTACT", PRIVACY.contact);
+    p.setProperty("PRIVACY_VERSION", PRIVACY.collectionVersion);
+    p.setProperty("PRIVACY_NOTICE", PRIVACY.collectionNotice);
+    const status = {
+      operationsContact: p.getProperty("OPERATIONS_CONTACT"),
+      privacyVersion: p.getProperty("PRIVACY_VERSION"),
+      publicConsentVersion: League.policies.settings.publicConsentVersion,
+      registrationOpen: leagueSettings_().registrationOpen,
+      privacyStorageApproved:
+        p.getProperty("PRIVACY_STORAGE_APPROVED") === "true",
+      seasonOpen: leagueSettings_().seasonOpen,
+      leagueEmailsEnabled: p.getProperty("LEAGUE_EMAILS_ENABLED") === "true",
+    };
+    Logger.log(JSON.stringify(status));
+    return status;
+  });
+}

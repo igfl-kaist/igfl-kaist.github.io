@@ -1,4 +1,5 @@
 import { createLeagueUI } from "../src/league-ui.mjs";
+import { privacyPage } from "../src/privacy-page.mjs";
 const content = document.querySelector("#content");
 let token = sessionStorage.getItem("igfl.dev-session");
 async function call(body) {
@@ -54,6 +55,11 @@ selector.onchange = async () => {
 };
 async function render() {
   let route = location.hash.slice(1) || "ranking";
+  if (["privacy", "consent"].includes(route)) {
+    ui.stop();
+    content.innerHTML = privacyPage(route === "consent");
+    return;
+  }
   if (route === "home") route = "ranking";
   if (route === "login") route = "activity";
   await ui.show(route, true);
