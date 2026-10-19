@@ -177,6 +177,34 @@ function configureLeagueSiteUrl() {
   });
   return inspectOperationsSetup();
 }
+/** Prepare the isolated preseason while every launch switch stays closed. */
+function configurePreseasonSettings() {
+  return locked_(() => {
+    const config = config_(),
+      p = storageProperties_(config);
+    requireClosedLaunch_(p);
+    const state = loadLeague_(config);
+    if (
+      state.matches.some(
+        (m) =>
+          m.seasonId !== COMPETITION.preseasonId || m.phase !== "preseason",
+      )
+    )
+      fail_("EXISTING_SEASON_REVIEW_REQUIRED");
+    p.setProperty("LEAGUE_PHASE", "preseason");
+    p.setProperty("LEAGUE_SEASON_ID", COMPETITION.preseasonId);
+    p.setProperty("LEAGUE_SEASON_NAME", COMPETITION.preseasonName);
+    const status = {
+      ...leagueSettings_(),
+      leagueEmailsEnabled: p.getProperty("LEAGUE_EMAILS_ENABLED") === "true",
+      privacyStorageApproved:
+        p.getProperty("PRIVACY_STORAGE_APPROVED") === "true",
+      periodLabel: COMPETITION.periodLabel,
+    };
+    Logger.log(JSON.stringify(status));
+    return status;
+  });
+}
 /** Two isolated, one-time test jobs. Never drains or edits the production league outbox. */
 function sendOperationsMailTests() {
   const p = PropertiesService.getScriptProperties(),

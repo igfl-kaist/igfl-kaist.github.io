@@ -1,3 +1,4 @@
+import { isUnrefereed, matchDuration, formatLabel } from "./competition.mjs";
 import { PRIVACY } from "./privacy-content.mjs";
 const e = (value) =>
   String(value ?? "").replace(
@@ -102,6 +103,7 @@ export function createLeagueUI({
   let view = null,
     route = "",
     filter = "all",
+    boardSeason = "",
     order = [],
     previousPath = "",
     timer,
@@ -149,7 +151,7 @@ export function createLeagueUI({
     ownGoals = {},
     redCards = [],
   ) {
-    return `<fieldset class="roster"><legend>${goals ? "우리 팀 실제 출전·득점" : "우리 팀 출전 예정 명단"}</legend><p class="muted caption">교체 선수를 포함해 5~20명을 선택해 주세요.${goals ? " 자책골·퇴장은 우리 팀 선수만 기록해요." : ""}</p>${ids.map((id) => `<div class="roster-row"><label><input type="checkbox" name="roster" value="${e(id)}" ${checked.includes(id) ? "checked" : ""}><span>${e(name(id))}<small>${e(player(id)?.lab)}</small></span></label>${goals ? `<div class="roster-scores"><label class="goal-field">득점<input type="number" min="0" max="99" name="goal-${e(id)}" value="${goals[id] || 0}"></label><label class="goal-field">자책골<input type="number" min="0" max="99" name="own-${e(id)}" value="${ownGoals[id] || 0}"></label><label class="check-line"><input type="checkbox" name="redCards" value="${e(id)}" ${redCards.includes(id) ? "checked" : ""}>퇴장</label></div>` : ""}</div>`).join("")}</fieldset>`;
+    return `<fieldset class="roster"><legend>${goals ? "우리 팀 실제 출전·득점" : "우리 팀 출전 예정 명단"}</legend><p class="muted caption">교체 선수를 포함해 경기 인원 이상, 최대 20명을 선택해 주세요. 6대6은 최소 6명이 필요해요.${goals ? " 자책골·퇴장은 우리 팀 선수만 기록해요." : ""}</p>${ids.map((id) => `<div class="roster-row"><label><input type="checkbox" name="roster" value="${e(id)}" ${checked.includes(id) ? "checked" : ""}><span>${e(name(id))}<small>${e(player(id)?.lab)}</small></span></label>${goals ? `<div class="roster-scores"><label class="goal-field">득점<input type="number" min="0" max="99" name="goal-${e(id)}" value="${goals[id] || 0}"></label><label class="goal-field">자책골<input type="number" min="0" max="99" name="own-${e(id)}" value="${ownGoals[id] || 0}"></label><label class="check-line"><input type="checkbox" name="redCards" value="${e(id)}" ${redCards.includes(id) ? "checked" : ""}>퇴장</label></div>` : ""}</div>`).join("")}</fieldset>`;
   }
   function feedback(message, error = false) {
     let node = content.querySelector("#feedback");
@@ -385,14 +387,31 @@ export function createLeagueUI({
     );
   }
   function ranking() {
-    const r = view.records;
+    const boards = view.seasonBoards || [
+      {
+        id: view.settings.seasonId,
+        name: view.settings.seasonName,
+        records: view.records,
+      },
+    ];
+    const board =
+        boards.find((b) => b.id === (boardSeason || view.settings.seasonId)) ||
+        boards[0],
+      r = board.records;
+    boardSeason = board.id;
     content.innerHTML =
       heading(
         "LEAGUE RECORDS",
         "랭킹보드",
         "한 경기씩, 함께 쌓아가는 우리 리그의 기록.",
       ) +
-      `<div class="season-strip"><span>${e(view.settings.seasonName)}</span><span>확정 경기 기준 · 30초마다 자동 갱신</span></div><section class="panel ranking-panel"><div class="section-heading"><h2>팀 파워랭킹</h2><span class="badge">ELO RATING</span></div>${r.teams.length ? `<div class="table-scroll"><table><thead><tr><th>순위</th><th>팀</th><th>Elo</th><th>경기</th><th>승 / 패</th><th>최근 변화</th></tr></thead><tbody>${r.teams.map((t) => `<tr><td>${t.rank}</td><td><a href="#team/${e(t.id)}">${e(t.name)}</a></td><td class="rating">${Math.round(t.rating)}</td><td>${t.played}</td><td>${t.won} / ${t.lost}</td><td class="delta">${t.change > 0 ? "+" : ""}${Math.round(t.change)}</td></tr>`).join("")}</tbody></table></div>` : empty("활동 중인 팀이 등록되면 파워랭킹이 시작돼요.")}<p class="caption muted">초기 1000 · K=32 · 상대 전력 반영 · 점수 차 제외 · 승부차기도 최종 승패로 계산해요.</p></section><div class="honors-grid"><section class="panel"><div class="eyebrow">GOAL SCORERS</div><h2>최근 득점 TOP 3</h2><p class="muted caption">선수별 이번 시즌 최근 출전 5경기 · 승부차기 제외</p>${r.scorers.length ? r.scorers.map((p) => `<div class="honor-row"><strong class="honor-rank">${p.rank}</strong><div><strong>${e(p.name)}</strong><small>${e(p.lab)} · 최근 ${p.appearances}경기</small></div><b>${p.goals}<small>골</small></b></div>`).join("") : empty("첫 득점 기록을 기다리고 있어요.")}</section><section class="panel"><div class="eyebrow">THANK YOU, REFEREES</div><h2>리그를 함께 만든 심판</h2><p class="muted caption">이번 시즌 공식 확정 경기의 내부 심판 활동 TOP 3</p>${r.referees.length ? r.referees.map((p) => `<div class="honor-row"><strong class="honor-rank">${p.rank}</strong><div><strong>${e(p.name)}</strong><small>${e(p.lab)}</small></div><b>${p.count}<small>경기</small></b></div>`).join("") : empty("심판의 첫 공식 활동을 기다리고 있어요.")}</section></div><p class="caption muted">동률은 공동순위로 표시하며, 3위 경계의 동률 선수를 모두 함께 보여줘요.</p>`;
+      `<nav class="season-select" aria-label="시즌 기록 선택">${boards.map((b) => `<button class="tab" data-season="${e(b.id)}" aria-pressed="${b.id === boardSeason}">${e(b.name)}</button>`).join("")}</nav><p class="caption muted">프리시즌과 정규리그는 별도로 집계하며, 각 시즌의 Elo는 1000에서 시작해요.</p><div class="season-strip"><span>${e(board.name)}</span><span>확정 경기 기준 · 30초마다 자동 갱신</span></div><section class="panel ranking-panel"><div class="section-heading"><h2>팀 파워랭킹</h2><span class="badge">ELO RATING</span></div>${r.teams.length ? `<div class="table-scroll"><table><thead><tr><th>순위</th><th>팀</th><th>Elo</th><th>경기</th><th>승 / 패</th><th>최근 변화</th></tr></thead><tbody>${r.teams.map((t) => `<tr><td>${t.rank}</td><td><a href="#team/${e(t.id)}">${e(t.name)}</a></td><td class="rating">${Math.round(t.rating)}</td><td>${t.played}</td><td>${t.won} / ${t.lost}</td><td class="delta">${t.change > 0 ? "+" : ""}${Math.round(t.change)}</td></tr>`).join("")}</tbody></table></div>` : empty("활동 중인 팀이 등록되면 파워랭킹이 시작돼요.")}<p class="caption muted">초기 1000 · K=32 · 상대 전력 반영 · 점수 차 제외 · 승부차기도 최종 승패로 계산해요.</p></section><div class="honors-grid"><section class="panel"><div class="eyebrow">GOAL SCORERS</div><h2>최근 득점 TOP 3</h2><p class="muted caption">선수별 이번 시즌 최근 출전 5경기 · 승부차기 제외</p>${r.scorers.length ? r.scorers.map((p) => `<div class="honor-row"><strong class="honor-rank">${p.rank}</strong><div><strong>${e(p.name)}</strong><small>${e(p.lab)} · 최근 ${p.appearances}경기</small></div><b>${p.goals}<small>골</small></b></div>`).join("") : empty("첫 득점 기록을 기다리고 있어요.")}</section><section class="panel"><div class="eyebrow">THANK YOU, REFEREES</div><h2>리그를 함께 만든 심판</h2><p class="muted caption">이번 시즌 공식 확정 경기의 내부 심판 활동 TOP 3</p>${r.referees.length ? r.referees.map((p) => `<div class="honor-row"><strong class="honor-rank">${p.rank}</strong><div><strong>${e(p.name)}</strong><small>${e(p.lab)}</small></div><b>${p.count}<small>경기</small></b></div>`).join("") : empty("심판의 첫 공식 활동을 기다리고 있어요.")}</section></div><p class="caption muted">동률은 공동순위로 표시하며, 3위 경계의 동률 선수를 모두 함께 보여줘요.</p>`;
+    content.querySelectorAll("[data-season]").forEach((button) => {
+      button.onclick = () => {
+        boardSeason = button.dataset.season;
+        ranking();
+      };
+    });
   }
   function registration() {
     const open = view.settings.registrationOpen;
@@ -697,10 +716,11 @@ export function createLeagueUI({
       );
   }
   function matchCard(m) {
-    return `<article class="match-card"><div>${badge(m.status)}<span class="caption">${date(m.startsAt)} · ${e(m.place)}</span></div><h3>${e(teamName(m.teamA))} <span class="muted">vs</span> ${e(teamName(m.teamB))}</h3><p class="caption muted">${m.refereeId ? "심판 " + e(name(m.refereeId)) : m.externalReferee ? "외부 심판 " + e(m.externalReferee.name) : "심판 배정 대기"} · 심판 1명 · 흐르는 시계 · 20분 / 5분 / 20분</p></article>`;
+    return `<article class="match-card"><div>${badge(m.status)}<span class="caption">${date(m.startsAt)} · ${e(m.place)}</span></div><h3>${e(teamName(m.teamA))} <span class="muted">vs</span> ${e(teamName(m.teamB))}</h3><p class="caption muted">${isUnrefereed(m) ? "심판 없는 경기 · 양 팀 확인으로 확정" : m.refereeId ? "심판 " + e(name(m.refereeId)) : m.externalReferee ? "외부 심판 " + e(m.externalReferee.name) : "심판 배정 대기"} · 흐르는 시계 · ${e(formatLabel(m))}</p></article>`;
   }
   function refereeFollowup(m, t) {
     if (
+      isUnrefereed(m) ||
       m.startsAt <= Date.now() ||
       m.refereeId ||
       ["cancelled", "abandoned", "forfeit"].includes(m.status)
@@ -725,25 +745,39 @@ export function createLeagueUI({
     );
   }
   function schedule() {
+    const pre = view.settings.competitionPhase === "preseason";
     const t = myTeam(),
       refs = view.players.filter((p) => p.referee && p.teamId !== t.id);
     content.innerHTML =
       heading(
         "MATCH SCHEDULE",
         "우리의 경기를 만들어요",
-        "심판 1명 · 흐르는 시계 · 전반 20분 / 휴식 5분 / 후반 20분. 양 팀 사전 명단 확인과 심판 수락 후 공식 등록돼요.",
+        pre
+          ? "프리시즌 · 5·6대6, 전후반 15·20분을 선택해요. 심판 없는 경기도 양 팀 합의로 등록할 수 있어요."
+          : "정규리그 · 5대5 · 전후반 20분 / 휴식 5분 · 중립 심판 1명이 필요해요.",
       ) +
       tabs() +
       `<div class="manage-grid"><section>${form(
         "schedule-form",
-        `${select("opponentId", "상대 팀", [["", "상대 팀을 선택해 주세요"], ...view.teams.filter((x) => x.id !== t.id && x.status === "active").map((x) => [x.id, x.name])])}<div class="form-grid">${input("startsAt", "경기 일시 (한국 시간)", "datetime-local", "", "required")}${input("place", "장소", "text", "", 'required maxlength="120"')}</div>${roster(t.members, [])}${select(
+        `${
+          pre
+            ? `<div class="form-grid">${select("playersPerSide", "경기 인원", [
+                ["5", "5대5"],
+                ["6", "6대6"],
+              ])}${select("halfMinutes", "전후반 경기 시간", [
+                ["15", "각 15분 · 휴식 5분"],
+                ["20", "각 20분 · 휴식 5분"],
+              ])}</div>`
+            : ""
+        }${select("opponentId", "상대 팀", [["", "상대 팀을 선택해 주세요"], ...view.teams.filter((x) => x.id !== t.id && x.status === "active").map((x) => [x.id, x.name])])}<div class="form-grid">${input("startsAt", "경기 일시 (한국 시간)", "datetime-local", "", "required")}${input("place", "장소", "text", "", 'required maxlength="120"')}</div>${roster(t.members, [])}${select(
           "refereeType",
           "심판 구분",
           [
             ["internal", "리그 내부 심판"],
             ["external", "외부 심판"],
+            ...(pre ? [["none", "심판 없음 · 프리시즌 전용"]] : []),
           ],
-        )}<fieldset id="internal-referees" class="roster"><legend>심판 후보 복수 선택</legend><p class="caption muted">양 팀 소속을 제외해요. 가장 먼저 수락한 한 명으로 확정돼요.</p><div id="referee-list"></div></fieldset><div id="external-referee" hidden>${input("refereeName", "외부 심판 이름", "text", "", 'maxlength="60"')}<label class="check-line"><input name="refereeAccepted" type="checkbox">외부 심판이 이 일정을 수락한 것을 확인했어요.</label></div><p class="notice">심판 배정 전에는 공식 일정 등록을 보류해요. 심판비는 양 팀이 10,000원씩 심판에게 직접 지급해요.</p>`,
+        )}<fieldset id="internal-referees" class="roster"><legend>심판 후보 복수 선택</legend><p class="caption muted">양 팀 소속을 제외해요. 가장 먼저 수락한 한 명으로 확정돼요.</p><div id="referee-list"></div></fieldset><div id="external-referee" hidden>${input("refereeName", "외부 심판 이름", "text", "", 'maxlength="60"')}<label class="check-line"><input name="refereeAccepted" type="checkbox">외부 심판이 이 일정을 수락한 것을 확인했어요.</label></div><p class="notice">${pre ? "심판 없는 경기는 양 팀의 일정·명단 확인 후 등록되고, 결과는 양 팀 대표 확인으로 확정돼요. " : ""}심판이 있는 경기는 배정 전 공식 등록을 보류해요. 심판비는 양 팀이 10,000원씩 직접 지급해요.</p>`,
         "경기 일정 등록",
       )}</section><section><h2>우리 팀 경기</h2>${
         (view.matches || [])
@@ -787,7 +821,8 @@ export function createLeagueUI({
     f.querySelector("[name=refereeType]").onchange = (ev) => {
       const external = ev.target.value === "external";
       content.querySelector("#external-referee").hidden = !external;
-      content.querySelector("#internal-referees").hidden = external;
+      content.querySelector("#internal-referees").hidden =
+        ev.target.value !== "internal";
     };
     bindForm("schedule-form", (fd, f) =>
       mutate(
@@ -798,7 +833,11 @@ export function createLeagueUI({
           startsAt: Date.parse(fd.get("startsAt") + "+09:00"),
           place: fd.get("place"),
           roster: fd.getAll("roster"),
-          refereeIds: fd.getAll("refereeIds"),
+          refereeMode: fd.get("refereeType"),
+          playersPerSide: pre ? Number(fd.get("playersPerSide")) : 5,
+          halfMinutes: pre ? Number(fd.get("halfMinutes")) : 20,
+          refereeIds:
+            fd.get("refereeType") === "internal" ? fd.getAll("refereeIds") : [],
           replayOf: route.split("/")[2] || undefined,
           externalReferee:
             fd.get("refereeType") === "external"
@@ -890,7 +929,7 @@ export function createLeagueUI({
                 const sub = m.submissions[t.id],
                   eligible = (m.rosters[t.id] || []).map((p) => p.id);
                 const score = sub?.score || { a: 0, b: 0 };
-                return `<section class="panel spaced">${matchCard(m)}<p class="caption muted">기록 버전 ${m.version} · ${e(teamName(m.teamA))} : ${e(teamName(m.teamB))} 순서로 스코어를 기록해요.</p>${matchComparison(m)}${m.status === "final" ? '<p class="notice">공식 확정되어 Elo와 개인 기록에 반영됐어요.</p>' : ["cancelled", "abandoned", "forfeit"].includes(m.status) ? '<p class="notice">정상 경기 기록과 Elo 집계에서 제외돼요.</p>' : m.startsAt + 45 * 60000 > Date.now() ? '<p class="notice">경기 종료 후 결과를 입력할 수 있어요.</p>' : form("result-" + m.id, `<div class="score-inputs">${input("scoreA", teamName(m.teamA), "number", score.a, 'min="0" max="99" required')}${input("scoreB", teamName(m.teamB), "number", score.b, 'min="0" max="99" required')}</div><div class="score-inputs pk-fields" ${score.a !== score.b ? "hidden" : ""}>${input("pkA", "승부차기 · " + teamName(m.teamA), "number", score.pkA ?? 0, 'min="0" max="99"')}${input("pkB", "승부차기 · " + teamName(m.teamB), "number", score.pkB ?? 0, 'min="0" max="99"')}</div>${roster(eligible, sub?.players.map((p) => p.id) || (m.rosters[t.id] || []).map((p) => p.id), sub?.goals || {}, sub?.ownGoals || {}, sub?.redCards || [])}<p class="caption muted">우리 팀 일반 득점 + 상대 팀이 기록한 자책골을 전체 스코어와 대조해요. 승부차기는 개인 득점에서 제외해요.</p><label class="check-line"><input name="confirmed" type="checkbox" required>우리 팀의 경기 스코어·실제 출전·득점 기록을 확인했어요.</label>`, "우리 팀 결과 제출")}${!["final", "cancelled", "abandoned", "forfeit"].includes(m.status) && sub && m.confirmations[t.id] !== m.version ? `<button class="button secondary" data-confirm="${e(m.id)}">현재 기록 버전 확인하기</button>` : ""}${!["final", "cancelled", "abandoned", "forfeit"].includes(m.status) ? `<button class="text-button danger" data-dispute="${e(m.id)}">이의 제기</button>` : ""}${matchOperations(m)}</section>`;
+                return `<section class="panel spaced">${matchCard(m)}<p class="caption muted">기록 버전 ${m.version} · ${e(teamName(m.teamA))} : ${e(teamName(m.teamB))} 순서로 스코어를 기록해요.</p>${matchComparison(m)}${m.status === "final" ? `<p class="notice">${m.phase === "preseason" ? "프리시즌" : "정규리그"} Elo와 개인 기록에 반영됐어요.${isUnrefereed(m) ? " 양 팀 대표 확인으로 확정한 경기예요." : ""}</p>` : ["cancelled", "abandoned", "forfeit"].includes(m.status) ? '<p class="notice">정상 경기 기록과 Elo 집계에서 제외돼요.</p>' : m.startsAt + matchDuration(m) > Date.now() ? '<p class="notice">경기 종료 후 결과를 입력할 수 있어요.</p>' : form("result-" + m.id, `<div class="score-inputs">${input("scoreA", teamName(m.teamA), "number", score.a, 'min="0" max="99" required')}${input("scoreB", teamName(m.teamB), "number", score.b, 'min="0" max="99" required')}</div><div class="score-inputs pk-fields" ${score.a !== score.b ? "hidden" : ""}>${input("pkA", "승부차기 · " + teamName(m.teamA), "number", score.pkA ?? 0, 'min="0" max="99"')}${input("pkB", "승부차기 · " + teamName(m.teamB), "number", score.pkB ?? 0, 'min="0" max="99"')}</div>${roster(eligible, sub?.players.map((p) => p.id) || (m.rosters[t.id] || []).map((p) => p.id), sub?.goals || {}, sub?.ownGoals || {}, sub?.redCards || [])}<p class="caption muted">우리 팀 일반 득점 + 상대 팀이 기록한 자책골을 전체 스코어와 대조해요. 승부차기는 개인 득점에서 제외해요.</p><label class="check-line"><input name="confirmed" type="checkbox" required>우리 팀의 경기 스코어·실제 출전·득점 기록을 확인했어요.</label>`, "우리 팀 결과 제출")}${!["final", "cancelled", "abandoned", "forfeit"].includes(m.status) && sub && m.confirmations[t.id] !== m.version ? `<button class="button secondary" data-confirm="${e(m.id)}">현재 기록 버전 확인하기</button>` : ""}${!["final", "cancelled", "abandoned", "forfeit"].includes(m.status) ? `<button class="text-button danger" data-dispute="${e(m.id)}">이의 제기</button>` : ""}${matchOperations(m)}</section>`;
               })
               .join("")
           : empty("등록된 경기가 없어요.")
@@ -1412,8 +1451,10 @@ export function createLeagueUI({
   }
   async function refresh() {
     if (busy || document.hidden) return;
+    const requestTicket = ticket;
     try {
       const next = await transport("view", {});
+      if (requestTicket !== ticket) return;
       if (next.revision !== view.revision) {
         if (dirty) {
           feedback(
@@ -1431,6 +1472,7 @@ export function createLeagueUI({
   function stop() {
     ticket++;
     clearInterval(timer);
+    content.removeAttribute("aria-busy");
     route = "";
     previousPath = "";
   }

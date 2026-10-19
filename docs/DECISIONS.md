@@ -151,3 +151,7 @@ Supabase를 선택하면 노출 테이블의 권한과 RLS를 함께 설정하�
 - [Supabase 이메일 인증](https://supabase.com/docs/guides/auth/auth-email-passwordless)
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Supabase 실시간 변경 구독](https://supabase.com/docs/guides/realtime/postgres-changes)
+
+## 2026-10-19 프리시즌 확정
+
+[프리시즌 규칙](PRESEASON.md)의 형식·무심판 확정·시즌별 기록 분리를 채택했다. 기간은 2027년 봄학기 개강 전까지다. 정확한 개강일과 종료 시각, 실제 가입/시즌 개통 시점, 정규리그 일정·컵/진출 세칙은 아직 정하지 않았다. 기존 정규리그 무심판 불허는 유지한다.

@@ -1,3 +1,4 @@
+import { operationsPage } from "../src/operations-page.mjs";
 import { createLeagueUI } from "../src/league-ui.mjs";
 import { privacyPage } from "../src/privacy-page.mjs";
 const content = document.querySelector("#content");
@@ -58,6 +59,13 @@ async function render() {
   if (["privacy", "consent"].includes(route)) {
     ui.stop();
     content.innerHTML = privacyPage(route === "consent");
+    return;
+  }
+  if (route === "operations" || route.startsWith("operations-")) {
+    ui.stop();
+    content.innerHTML = operationsPage();
+    if (route.startsWith("operations-"))
+      document.getElementById(route)?.scrollIntoView();
     return;
   }
   if (route === "home") route = "ranking";
