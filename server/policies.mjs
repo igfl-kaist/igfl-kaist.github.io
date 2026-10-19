@@ -62,6 +62,7 @@ export const LeaguePolicies = (() => {
     clockMode: "running",
     refereeCount: 1,
     competitionPhase: "regular",
+    directoryExamplesEnabled: false,
     seasonEndsAt: null,
     privacyNotice: PRIVACY.collectionNotice,
   };
