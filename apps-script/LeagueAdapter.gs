@@ -13,6 +13,7 @@ function leagueSettings_(config) {
     publicConsentNotice: League.policies.settings.publicConsentNotice,
     operationsContact: p.getProperty("OPERATIONS_CONTACT") || "",
     competitionPhase: p.getProperty("LEAGUE_PHASE") || "regular",
+    directoryExamplesEnabled: p.getProperty("LEAGUE_DIRECTORY_EXAMPLES") === "true",
     seasonEndsAt: Number(p.getProperty("LEAGUE_SEASON_ENDS_AT")) || null,
     seasonId: p.getProperty("LEAGUE_SEASON_ID") || "pilot",
     seasonName: p.getProperty("LEAGUE_SEASON_NAME") || "시즌 준비",

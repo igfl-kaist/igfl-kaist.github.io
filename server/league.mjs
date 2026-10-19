@@ -1,5 +1,6 @@
 // Shared domain service: Node and Apps Script run this exact implementation.
 import { COMPETITION, isUnrefereed, matchDuration } from "../src/competition.mjs";
+import { DIRECTORY_EXAMPLES } from "../src/directory-examples.mjs";
 import { LeaguePolicies } from "./policies.mjs";
 export const League = (() => {
   const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -237,6 +238,7 @@ export const League = (() => {
     return {
       revision: s.revision,
       settings: copy(s.settings),
+      examples: s.settings.directoryExamplesEnabled ? copy(DIRECTORY_EXAMPLES) : {teams:[],players:[]},
       players: s.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -507,6 +509,7 @@ export const League = (() => {
   }
   function apply(s, actor, command, args, ctx) {
     require(actor?.userId, "UNAUTHENTICATED", "로그인이 필요해요.");
+    require(!actor.userId.startsWith("example-"), "FORBIDDEN", "샘플은 표시 전용이며 회원 기능을 사용할 수 없어요.");
     if (
       command === "finalize" &&
       s.matches.find((m) => m.id === args.matchId)?.status === "final"

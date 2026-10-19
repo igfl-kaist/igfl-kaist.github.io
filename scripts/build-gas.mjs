@@ -7,12 +7,14 @@ const files = [
   "apps-script/StorageRotation.gs",
   "src/privacy-content.mjs",
   "src/competition.mjs",
+  "src/directory-examples.mjs",
   "server/policies.mjs",
   "server/league.mjs",
   "server/images.mjs",
   "apps-script/LeagueAdapter.gs",
   "apps-script/OwnerSetup.gs",
   "apps-script/RecruitmentSetup.gs",
+  "apps-script/DirectoryExamplesSetup.gs",
   "apps-script/PrivacyVerification.gs",
 ];
 const source = (await Promise.all(files.map((f) => readFile(f, "utf8"))))

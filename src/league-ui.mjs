@@ -110,11 +110,14 @@ export function createLeagueUI({
     busy = false,
     dirty = false,
     ticket = 0;
-  const player = (id) => view?.players.find((p) => p.id === id),
+  const player = (id) =>
+      view?.players.find((p) => p.id === id) ||
+      view?.examples?.players.find((p) => p.id === id),
     team = (id) =>
       view?.teams.find((t) => t.id === id) ||
       view?.applications?.find((t) => t.id === id) ||
-      view?.adminData?.teams.find((t) => t.id === id);
+      view?.adminData?.teams.find((t) => t.id === id) ||
+      view?.examples?.teams.find((t) => t.id === id);
   const name = (id) => player(id)?.name || "공석",
     teamName = (id) => team(id)?.name || "팀",
     myTeam = () => team(view?.me?.teamId);
@@ -221,14 +224,19 @@ export function createLeagueUI({
   }
   function directory(kind) {
     const isTeam = kind === "teams";
+    const actual = isTeam ? view.teams : view.players,
+      examples = (isTeam ? view.examples?.teams : view.examples?.players) || [],
+      entries = [...actual, ...examples];
     if (previousPath !== route) {
-      order = shuffled((isTeam ? view.teams : view.players).map((p) => p.id));
+      order = shuffled(entries.map((p) => p.id));
       filter = "all";
       previousPath = route;
     }
-    const byId = new Map(
-      (isTeam ? view.teams : view.players).map((p) => [p.id, p]),
+    const known = new Set(order);
+    order.push(
+      ...shuffled(entries.filter((p) => !known.has(p.id)).map((p) => p.id)),
     );
+    const byId = new Map(entries.map((p) => [p.id, p]));
     const rows = order.map((id) => byId.get(id)).filter(Boolean);
     content.innerHTML =
       heading(
@@ -238,8 +246,11 @@ export function createLeagueUI({
           ? "서로 다른 연구실의 우리가, 하나의 팀으로."
           : "이름과 연구실 너머, 경기장에서 만나는 우리.",
       ) +
+      (examples.length
+        ? '<p class="notice">샘플 카드가 포함되어 있어요. 가상의 팀·선수이며 실제 등록 인원이나 랭킹에 포함되지 않아요. 샘플에는 가입·영입·경기 요청을 보낼 수 없어요.</p>'
+        : "") +
       (isTeam
-        ? `<div class="list-toolbar"><p class="muted">${rows.length}개 팀 · 방문할 때마다 다른 순서로 만나요</p><a href="#team-new" class="button secondary small">우리 팀 등록하기</a></div>`
+        ? `<div class="list-toolbar"><p class="muted">등록 ${actual.length}개 팀${examples.length ? ` · 샘플 ${examples.length}개 팀` : ""} · 방문할 때마다 다른 순서로 만나요</p><a href="#team-new" class="button secondary small">우리 팀 등록하기</a></div>`
         : `<div class="tabs" role="group" aria-label="선수 필터">${[
             ["all", "전체"],
             ["member", "팀 소속"],
@@ -265,7 +276,8 @@ export function createLeagueUI({
         ? filtered.map((p) => (isTeam ? teamCard(p) : playerCard(p))).join("")
         : empty("아직 해당하는 등록 정보가 없어요.");
       const count = content.querySelector("#result-count");
-      if (count) count.textContent = `${filtered.length}명의 선수`;
+      if (count)
+        count.textContent = `등록 선수 ${filtered.filter((p) => !p.example).length}명${examples.length ? ` · 샘플 ${filtered.filter((p) => p.example).length}명` : ""}`;
     }
     content.querySelectorAll("[data-filter]").forEach(
       (b) =>
@@ -289,10 +301,11 @@ export function createLeagueUI({
     const labs = [
       ...new Set(t.members.map((id) => player(id)?.lab).filter(Boolean)),
     ];
-    return `<article class="team-card"><a href="#team/${e(t.id)}"><div class="team-cover">${image(t)}${t.recruiting ? '<span class="recruitment">선수 모집 중</span>' : ""}</div><div class="team-card-body"><h2>${e(t.name)}</h2><p>${e(t.description)}</p><dl><div><dt>주장</dt><dd>${e(name(t.captainId))}</dd><dt>부주장</dt><dd>${e(name(t.viceId))}</dd></div></dl><div class="lab-tags">${labs.map((l) => `<span>${e(l)}</span>`).join("")}</div><div class="card-foot"><span>${t.members.length}명</span>${t.status !== "active" ? badge(t.status) : "<span>팀 만나보기 ↗</span>"}</div></div></a>${invitationButton(t)}</article>`;
+    return `<article class="team-card"><a href="#team/${e(t.id)}"><div class="team-cover">${image(t)}${t.recruiting ? `<span class="recruitment">선수 모집 중${t.example ? " · 예시" : ""}</span>` : ""}</div><div class="team-card-body">${t.example ? '<span class="badge">샘플 팀</span>' : ""}<h2>${e(t.name)}</h2><p>${e(t.description)}</p><dl><div><dt>주장</dt><dd>${e(name(t.captainId))}</dd><dt>부주장</dt><dd>${e(name(t.viceId))}</dd></div></dl><div class="lab-tags">${labs.map((l) => `<span>${e(l)}</span>`).join("")}</div><div class="card-foot"><span>${t.members.length}명</span>${t.status !== "active" ? badge(t.status) : "<span>팀 만나보기 ↗</span>"}</div></div></a>${invitationButton(t)}</article>`;
   }
   function invitationButton(t) {
     if (
+      t.example ||
       !view.me?.isLeader ||
       t.id === view.me.teamId ||
       t.status !== "active" ||
@@ -372,7 +385,7 @@ export function createLeagueUI({
     );
   }
   function playerCard(p) {
-    return `<article class="player-card"><div class="avatar" aria-hidden="true">${e(p.name.slice(-2))}</div><p class="caption">IGFL 등록 선수${p.referee ? " / 심판" : ""}</p><h2>${e(p.name)}</h2><p>${e(p.lab)}</p><span class="${p.teamId ? "team-label" : "free-label"}">${p.teamId ? e(teamName(p.teamId)) : "무소속"}</span></article>`;
+    return `<article class="player-card"><div class="avatar" aria-hidden="true">${e(p.name.slice(-2))}</div><p class="caption">${p.example ? "샘플 선수" : "IGFL 등록 선수"}${p.referee ? " / 심판" : ""}</p><h2>${e(p.name)}</h2><p>${e(p.lab)}</p><span class="${p.teamId ? "team-label" : "free-label"}">${p.teamId ? e(teamName(p.teamId)) : "무소속"}</span></article>`;
   }
   function teamDetail(id) {
     const t = team(id);
@@ -380,7 +393,7 @@ export function createLeagueUI({
       content.innerHTML = empty("팀을 찾을 수 없어요.");
       return;
     }
-    content.innerHTML = `<a class="back-link" href="#teams">← 팀 목록</a><section class="team-detail-hero"><div class="team-cover">${image(t)}</div><div><div class="eyebrow">OUR TEAM</div><h1>${e(t.name)}</h1>${t.recruiting ? '<span class="recruitment inline">선수 모집 중</span>' : ""}<p class="muted">${e(t.description)}</p>${badge(t.status)}${invitationButton(t)}<p>주장 ${e(name(t.captainId))} · 부주장 ${e(name(t.viceId))}</p>${t.graceEndsAt ? `<p class="notice">${date(t.graceEndsAt)}까지 6명을 충원하면 복귀해요.</p>` : ""}</div></section><h2>함께 뛰는 팀원 <span class="muted">${t.members.length}</span></h2><div class="player-grid">${t.members.map((id) => playerCard(player(id))).join("")}</div><section class="join-panel"><h2>이 팀과 함께하고 싶다면</h2><p class="muted">홈페이지에서 주장·부주장에게 가입 문의를 남겨요. 개인 연락처는 공개하지 않아요.</p>${view.me?.player && !view.me.teamId ? form("join-form", '<label class="form-field">간단한 소개<textarea name="message" required rows="3" maxlength="500" placeholder="함께 뛰고 싶어요. 반가워요!"></textarea></label>', "가입 요청 보내기") : view.me?.teamId ? "<p>현재 소속 팀에서 탈퇴해 무소속이 된 후 가입을 요청할 수 있어요.</p>" : '<a class="button" href="#register">선수 등록하고 함께하기</a>'}</section>`;
+    content.innerHTML = `<a class="back-link" href="#teams">← 팀 목록</a><section class="team-detail-hero"><div class="team-cover">${image(t)}</div><div><div class="eyebrow">OUR TEAM</div><h1>${e(t.name)}</h1>${t.recruiting ? '<span class="recruitment inline">선수 모집 중</span>' : ""}<p class="muted">${e(t.description)}</p>${t.example ? '<span class="badge">샘플 팀</span>' : badge(t.status)}${invitationButton(t)}<p>주장 ${e(name(t.captainId))} · 부주장 ${e(name(t.viceId))}</p>${t.graceEndsAt ? `<p class="notice">${date(t.graceEndsAt)}까지 6명을 충원하면 복귀해요.</p>` : ""}</div></section><h2>함께 뛰는 팀원 <span class="muted">${t.members.length}</span></h2><div class="player-grid">${t.members.map((id) => playerCard(player(id))).join("")}</div>${t.example ? '<section class="join-panel"><h2>화면을 소개하는 샘플 팀이에요</h2><p class="muted">가상의 선수와 연구실로 구성한 예시예요. 실제 가입·영입·경기 요청이나 랭킹 집계의 대상이 아니에요.</p></section>' : `<section class="join-panel"><h2>이 팀과 함께하고 싶다면</h2><p class="muted">홈페이지에서 주장·부주장에게 가입 문의를 남겨요. 개인 연락처는 공개하지 않아요.</p>${view.me?.player && !view.me.teamId ? form("join-form", '<label class="form-field">간단한 소개<textarea name="message" required rows="3" maxlength="500" placeholder="함께 뛰고 싶어요. 반가워요!"></textarea></label>', "가입 요청 보내기") : view.me?.teamId ? "<p>현재 소속 팀에서 탈퇴해 무소속이 된 후 가입을 요청할 수 있어요.</p>" : '<a class="button" href="#register">선수 등록하고 함께하기</a>'}</section>`}`;
     bindInvitations();
     bindForm("join-form", (fd, f) =>
       mutate("joinRequest", { teamId: id, message: fd.get("message") }, f),
@@ -1462,7 +1475,11 @@ export function createLeagueUI({
     try {
       const next = await transport("view", {});
       if (requestTicket !== ticket) return;
-      if (next.revision !== view.revision) {
+      if (
+        next.revision !== view.revision ||
+        next.settings.directoryExamplesEnabled !==
+          view.settings.directoryExamplesEnabled
+      ) {
         if (dirty) {
           feedback(
             "새로운 변경이 있어요. 입력을 마친 뒤 다시 불러와 최신 상태를 확인해 주세요.",
