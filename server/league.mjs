@@ -541,7 +541,7 @@ export const League = (() => {
           require(s.settings.registrationOpen &&
             s.settings.privacyVersion &&
             s.settings
-              .privacyNotice, "REGISTRATION_CLOSED", "개인정보 안내 확정 전에는 선수 정보를 받지 않아요.");
+              .privacyNotice, "REGISTRATION_CLOSED", "현재 선수 등록이 닫혀 있어요. 운영 안내를 확인해 주세요.");
           require(!p, "ALREADY_REGISTERED", "이미 등록된 선수예요.");
           require(args.consent === true &&
             args.consentVersion ===

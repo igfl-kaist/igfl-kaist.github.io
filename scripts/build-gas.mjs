@@ -12,6 +12,7 @@ const files = [
   "server/images.mjs",
   "apps-script/LeagueAdapter.gs",
   "apps-script/OwnerSetup.gs",
+  "apps-script/RecruitmentSetup.gs",
   "apps-script/PrivacyVerification.gs",
 ];
 const source = (await Promise.all(files.map((f) => readFile(f, "utf8"))))

@@ -296,7 +296,7 @@ test("the original snapshot remains active if pointer commit fails, and retry co
   assert.notEqual(h.properties.LEAGUE_ACTIVE_SNAPSHOT, original);
 });
 
-test("the expected 100-player scale plus a full 50-request day fits the bounded property store", () => {
+test("the expected 100-player scale plus a full 300-request day fits the bounded property store", () => {
   const h = harness();
   for (let i = 0; i < 100; i++)
     h.c.append_(config(h), "Accounts", {
@@ -305,7 +305,7 @@ test("the expected 100-player scale plus a full 50-request day fits the bounded 
       createdAt: 1800000000000,
       lastSeenAt: 1800000000000,
     });
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 300; i++) {
     h.c.append_(config(h), "Challenges", {
       id: "c".repeat(60) + i,
       email: "p" + i + "@kaist.ac.kr",
@@ -326,5 +326,7 @@ test("the expected 100-player scale plus a full 50-request day fits the bounded 
   }
   const status = h.c.inspectStorageStatus();
   assert.equal(status.authRecordCounts.Accounts, 100);
-  assert.ok(status.propertiesBytes < 150000);
+  assert.equal(status.authRecordCounts.Challenges, 300);
+  assert.equal(status.authRecordCounts.Sessions, 300);
+  assert.ok(status.propertiesBytes < 400000);
 });
