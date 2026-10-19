@@ -125,3 +125,13 @@ Sheets 개별 변경 이력의 파기가 지원되지 않아 별도 `PRIVACY_STO
 14:35 KST `sendOperationsMailTests()`를 한 번 실행했다. `[IGFL] [테스트] 팀 등록 신청`(운영진 수신자 분기)과 `[IGFL] [테스트] 심판 배정 요청`(합성 심판 ID→이메일 해석 분기)을 지정 운영 문의 주소로만 각각 한 통 발송했다. 실제 공통 메일 본문/발송 함수를 사용했고 실제 outbox·선수·경기는 만들지 않았다. 저널 `manual-admin-v1`, `manual-referee-v1` 모두 sent, 실행 완료를 화면에서 확인했으며 잔여 수신자분은 1499→1497이었다. 이 수치는 해당 시점의 잔여 할당량으로 고정 일일 한도는 아니다. MailApp 성공과 수신함 도착은 구분하며, 이어서 사용자가 두 통 모두 수신했다고 직접 확인했다. 이번 메일 시험의 발송·수신 확인은 완료됐다.
 
 적용 후에도 `registrationRequested=false`, `privacyStorageApproved=false`, `seasonOpen=false`, `leagueEmailsEnabled=false`다. 자동 메일 트리거는 추가하지 않았고 기존 개인정보 정리 트리거는 유지했다. 이번 실전 검증은 단일 운영 계정 연결과 제한된 두 통의 메일 시험이며 여러 실제 사용자의 동시 심판 수락·발송 장애 복구를 실전 검증한 것은 아니다. 정상 OTP로 로그인하면 운영 관리 화면을 사용할 수 있다.
+
+## 2026-10-19 Organization 이전과 루트 홈페이지 배포
+
+사용자 지시로 공개 저장소를 `noeyusiohc/igfl`에서 **`igfl-kaist/igfl-kaist.github.io`**로 이전·이름 변경했다. 이전 전후 저장소 ID 1421165787이 같고 커밋·PR 이력이 유지된다. 로컬 origin은 새 저장소로 갱신했다. 개인 홈페이지 저장소는 변경하지 않았다. 현재 홈페이지는 **https://igfl-kaist.github.io/** 다. 이전 기록의 개인 계정 프로젝트 주소는 당시 검증 주소이며 현재 접속 주소가 아니다.
+
+[PR #8](https://github.com/igfl-kaist/igfl-kaist.github.io/pull/8)의 자동 테스트 77개·정적/GAS 빌드가 통과했고, 병합 커밋 `5195c9d6ecc3e508a9563e694a2de0bfc04497d1`의 [Pages 배포](https://github.com/igfl-kaist/igfl-kaist.github.io/actions/runs/39206994478)가 성공했다. Pages Source는 GitHub Actions, `PAGES_ENABLED=true`, HTTPS 강제를 유지한다. 새 루트의 HTML과 config.json이 HTTP 200을 반환했다. 브라우저에서 홈과 빈 랭킹보드를 확인하고 로그인 화면의 연결 점검이 `IGFL Auth · 0.4.3`을 표시해 새 Pages 출처의 CORS 응답 읽기를 확인했다. 새 주소에서 전체 OTP 로그인까지 시험한 것은 아니다.
+
+14:54 KST 기존 Google 소유자 환경에서 `configureLeagueSiteUrl()`을 실행해 `LEAGUE_SITE_URL=https://igfl-kaist.github.io/`만 변경했다. 운영진 권한·알림 수신자 설정·일회성 메일 시험 저널을 유지했고 메일을 발송하지 않았다. 소유자 진단의 `siteConfigured=true`, `adminBound=true`, 가입·개인정보 저장소 승인·시즌·리그 자동 메일 모두 false를 확인했다.
+
+14:55 KST 기존 Apps Script URL·소유자 실행·모든 사용자 호출·두 OAuth 범위를 유지해 **배포 버전 11 / 코드 0.4.3**으로 갱신했다. 실제 HTTP health가 0.4.3, 공개 리그가 가입·시즌 닫힘과 선수/팀 0을 반환했다. 기존 Google 비공개 저장소와 운영진 계정은 그대로이며 실제 가입·시즌·리그 메일 자동 발송은 개통하지 않았다.
