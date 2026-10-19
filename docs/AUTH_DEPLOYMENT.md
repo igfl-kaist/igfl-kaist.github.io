@@ -135,3 +135,15 @@ Sheets 개별 변경 이력의 파기가 지원되지 않아 별도 `PRIVACY_STO
 14:54 KST 기존 Google 소유자 환경에서 `configureLeagueSiteUrl()`을 실행해 `LEAGUE_SITE_URL=https://igfl-kaist.github.io/`만 변경했다. 운영진 권한·알림 수신자 설정·일회성 메일 시험 저널을 유지했고 메일을 발송하지 않았다. 소유자 진단의 `siteConfigured=true`, `adminBound=true`, 가입·개인정보 저장소 승인·시즌·리그 자동 메일 모두 false를 확인했다.
 
 14:55 KST 기존 Apps Script URL·소유자 실행·모든 사용자 호출·두 OAuth 범위를 유지해 **배포 버전 11 / 코드 0.4.3**으로 갱신했다. 실제 HTTP health가 0.4.3, 공개 리그가 가입·시즌 닫힘과 선수/팀 0을 반환했다. 기존 Google 비공개 저장소와 운영진 계정은 그대로이며 실제 가입·시즌·리그 메일 자동 발송은 개통하지 않았다.
+
+## 2026-10-19 프리시즌 운영 안내와 경기 형식
+
+[PR #9](https://github.com/igfl-kaist/igfl-kaist.github.io/pull/9)를 병합했다. 자동 테스트 84개·정적 빌드·GAS 번들 구문 검사가 통과했고, 병합 커밋 `2586367608776e9f1ba5e0a795b222d825f892d8`의 [Pages 배포](https://github.com/igfl-kaist/igfl-kaist.github.io/actions/runs/39210477975)가 성공했다. [운영 안내](https://igfl-kaist.github.io/#operations)를 로그인 없이 확인하고 실제 랭킹보드에서 프리시즌·정규리그 선택과 빈 기록 표시를 확인했다. Pages 출처의 연결 점검이 `IGFL Auth · 0.5.0`을 반환했다. OTP 발송·로그인 시험은 이번 변경에서 반복하지 않았다.
+
+15:31 KST 기존 소유자 환경에서 `configurePreseasonSettings()` 실행이 완료됐다. 구분 preseason, 별도 시즌 ID/이름을 준비했고 `registrationOpen=false`, `seasonOpen=false`, `leagueEmailsEnabled=false`, `privacyStorageApproved=false`, `seasonEndsAt=null`을 로그 화면에서 확인했다. 데이터·권한·메일 수신자·인증·스냅샷 포인터를 교체하지 않았다. 15:32 KST 기존 웹 앱 URL·소유자 실행·모든 사용자 호출·기존 두 OAuth 범위를 유지해 **배포 버전 12 / 코드 0.5.0**으로 갱신했다. 메일/가입/시즌 스위치를 열거나 트리거를 추가하지 않았다.
+
+배포 직후 HTTP health는 먼저 0.5.0을 반환했고 첫 리그 조회에는 이전 응답 형태가 잠시 보였다. 후속 캐시 방지 조회에서 `competitionPhase=preseason`, 별도 두 시즌 보드, 가입·시즌 닫힘과 선수/팀 0을 확인했고 실제 Pages에서도 새 보드를 확인했다. 운영 데이터에 합성 선수·경기를 넣지 않았다.
+
+로컬 합성 브라우저에서는 양 팀 주장·부주장이 6대6·15/5/15·심판 없음 일정을 등록하고 자기 팀 명단을 확인한 뒤 결과 제출·현재 버전 확인으로 자동 확정하는 전체 흐름을 검증했다. 합성 시각만 종료 후로 이동해 결과 흐름을 시험했고 프리시즌 Elo/득점 반영과 정규리그 초기 1000·0경기를 확인했다. 390×844 모바일 운영 안내·경기 등록의 가로 넘침 없음과 명단 복수 선택·무심판 선택 시 후보 숨김을 확인했다. 검증 전용 서버/탭은 종료했다. 정규리그 및 심판 있는 경기의 승인 규칙·시즌별 원장과 정정은 자동 테스트로 검증했다.
+
+기간은 **2027년 봄학기 개강 전까지 · 정확한 종료일 추후 공지**다. 공식 2027년 개강일·한국 시간 종료 시각과 시즌별 보관 메타데이터 설정은 개통 전 남은 항목이다. 가입·개인정보 저장소 승인·시즌 경기 등록·리그 메일 자동 발송은 계속 닫혀 있다.
