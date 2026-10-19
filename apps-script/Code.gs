@@ -1,7 +1,7 @@
 /* IGFL email auth. No passwords, raw OTPs, or raw session tokens are stored. */
 const IGFL_ = Object.freeze({
   protocol: "igfl-auth-v1",
-  version: "0.4.2",
+  version: "0.4.3",
   codeTtl: 300000,
   sessionTtl: 43200000,
   cooldown: 60000,

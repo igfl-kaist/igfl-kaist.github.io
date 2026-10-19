@@ -241,7 +241,7 @@
 
 프런트엔드는 React·TypeScript·Vite와 GitHub Pages를 후보로 유지한다. **인증·메일은 Google Apps Script와 비공개 Google Sheets를 우선 검증**한다. 리그 경기·Elo 전체 저장소가 자동으로 Sheets로 확정된 것은 아니다. 별도 PostgreSQL 등 리그 API를 쓴다면 Apps Script 세션을 그 서버에서도 검증하는 연결이 필요하다. 기술별 최신 지원·한도를 확인하고 선택한 통신과 저장소가 원자적 심판 배정·권한·Elo 재계산을 충족해야 한다. [인증 설계](AUTH_APPS_SCRIPT.md)를 먼저 읽는다.
 
-**사용자의 기존 개인 GitHub 계정 안에 별도 공개 저장소 `noeyusiohc/igfl`**을 사용한다. 처음에는 비공개로 개발했으며 최신 사용자 지시로 공개 전환·Pages 설정·PR 병합을 승인했다. 프로젝트 Pages 주소는 `https://noeyusiohc.github.io/igfl/`다. 기존 개인 홈페이지를 보존한다. 최신 지시로 페이지 개발 완료 후 리그 Organization으로 이전할 계획이며, 이름·이전 시점 확정 전에는 개인 계정에서 개발한다. 별도 공유 로그인 계정은 만들지 않는다. 실제 가입은 닫아둔다. 전체 리그 백엔드의 장기 운영 구성은 미정이다. 홈페이지 이용자에게 GitHub 계정은 필요 없다.
+2026-10-19 최신 사용자 지시로 기존 공개 `noeyusiohc/igfl`을 **`igfl-kaist/igfl-kaist.github.io`** Organization 저장소로 이전하고 **`https://igfl-kaist.github.io/`** 루트 Pages를 사용한다. 기존 개인 홈페이지·Google 백엔드·운영진 권한은 보존한다. 공유 로그인 계정을 만들지 않으며 홈페이지 이용자에게 GitHub 계정은 필요 없다. 실제 선수 가입·시즌·리그 메일 자동 발송은 계속 닫는다.
 
 공개 저장소의 Pages는 GitHub Free에서 무료로 사용할 수 있고 프로젝트 기본 주소는 `<계정>.github.io/<저장소>/`다. 비공개 저장소 Pages는 지원 유료 플랜이 필요하며 실제 사용 플랜은 구현 시 확인한다. DB·메일·인증·이미지와 독립 도메인 비용은 별개다. [GitHub 공식 안내](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)를 확인했다.
 

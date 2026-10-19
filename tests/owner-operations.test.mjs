@@ -33,6 +33,13 @@ test("owner binds verified account ID, preserves other admins and keeps every la
     assert.equal(status[flag], false);
   assert.equal(h.properties.LEAGUE_ACTIVE_SNAPSHOT, before);
   assert.ok(!JSON.stringify(status).includes("verified-operator"));
+  const adminsBeforeUrlChange = h.properties.LEAGUE_ADMIN_USER_IDS;
+  h.properties.LEAGUE_SITE_URL = "https://old.example.invalid/";
+  const migration = h.c.configureLeagueSiteUrl();
+  assert.equal(migration.siteUrl, "https://igfl-kaist.github.io/");
+  assert.equal(migration.leagueEmailsEnabled, false);
+  assert.equal(h.properties.LEAGUE_ADMIN_USER_IDS, adminsBeforeUrlChange);
+  assert.equal(h.properties.LEAGUE_ACTIVE_SNAPSHOT, before);
   h.c.findSession_ = () => ({
     value: { userId: "verified-operator", email: "sy.choi@kaist.ac.kr" },
   });
@@ -170,6 +177,9 @@ test("owner mail tests refuse any open launch gate and any extra recipient", () 
       igflCode: "CLOSE_LEAGUE_BEFORE_OWNER_SETUP",
     });
     assert.throws(() => h.c.configureOperationsAdmin(), {
+      igflCode: "CLOSE_LEAGUE_BEFORE_OWNER_SETUP",
+    });
+    assert.throws(() => h.c.configureLeagueSiteUrl(), {
       igflCode: "CLOSE_LEAGUE_BEFORE_OWNER_SETUP",
     });
   }

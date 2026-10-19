@@ -131,8 +131,8 @@ function inspectOperationsSetup() {
       adminMailConfigured:
         p.getProperty("LEAGUE_ADMIN_EMAILS") === PRIVACY.contact,
       siteConfigured:
-        p.getProperty("LEAGUE_SITE_URL") ===
-        "https://noeyusiohc.github.io/igfl/",
+        p.getProperty("LEAGUE_SITE_URL") === "https://igfl-kaist.github.io/",
+      siteUrl: p.getProperty("LEAGUE_SITE_URL") || "",
       registrationRequested:
         p.getProperty("LEAGUE_REGISTRATION_OPEN") === "true",
       privacyStorageApproved:
@@ -164,7 +164,16 @@ function configureOperationsAdmin() {
       [...new Set([...admins, account.userId])].join(","),
     );
     p.setProperty("LEAGUE_ADMIN_EMAILS", PRIVACY.contact);
-    p.setProperty("LEAGUE_SITE_URL", "https://noeyusiohc.github.io/igfl/");
+    p.setProperty("LEAGUE_SITE_URL", "https://igfl-kaist.github.io/");
+  });
+  return inspectOperationsSetup();
+}
+/** Owner-only URL migration. Does not grant roles, send mail or open launch gates. */
+function configureLeagueSiteUrl() {
+  locked_(() => {
+    const p = storageProperties_(config_());
+    requireClosedLaunch_(p);
+    p.setProperty("LEAGUE_SITE_URL", "https://igfl-kaist.github.io/");
   });
   return inspectOperationsSetup();
 }

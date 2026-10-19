@@ -1,6 +1,6 @@
 # IGFL 개발 지침
 
-이 저장소는 ISE·GSDS 풋살 리그 홈페이지의 기획과 구현을 위한 저장소다. 2026년 10월 16일 사용자 지시로 이메일 인증에 이어 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 현재 상태와 다음 작업은 `docs/LEAGUE_OPERATIONS.md`를 따른다. 사용자 지시로 실제 선수 가입은 서버에서 닫혀 있고 시즌·운영 알림도 아직 개통하지 않았다. 사용자의 최신 지시로 `noeyusiohc/igfl`을 **공개 저장소**로 전환했고 PR #1 병합과 GitHub Pages 배포를 완료했다. 배포 주소는 `https://noeyusiohc.github.io/igfl/`이며 기존 개인 홈페이지는 보존한다. Pages Source는 GitHub Actions, 저장소 변수는 `PAGES_ENABLED=true`다. **공개 홈페이지 배포가 선수 가입 개통을 뜻하지 않는다. 실제 가입·시즌·리그 메일은 계속 닫아둔다.** 개인정보 정책과 운영 설정이 정해지기 전 임의로 개통하지 않는다. Google의 기존 Sheets 및 메일 발송 OAuth 권한은 사용자가 승인했다. 사용자는 페이지 개발을 마친 뒤 리그용 GitHub Organization으로 저장소를 이전하기로 했다. Organization 이름·이전 시점은 미정이며 현재는 개인 계정에서 개발을 계속한다. 이 계획만으로 Organization을 생성하거나 저장소를 즉시 이전하지 않는다.
+이 저장소는 ISE·GSDS 풋살 리그 홈페이지의 기획과 구현을 위한 저장소다. 2026년 10월 16일 사용자 지시로 이메일 인증에 이어 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 현재 상태와 다음 작업은 `docs/LEAGUE_OPERATIONS.md`를 따른다. 사용자 지시로 실제 선수 가입은 서버에서 닫혀 있고 시즌·운영 알림도 아직 개통하지 않았다. 2026-10-19 사용자 지시로 기존 공개 저장소 `noeyusiohc/igfl`을 사용자가 만든 `igfl-kaist` Organization의 **`igfl-kaist/igfl-kaist.github.io`**로 이전하고 루트 Pages 주소 **`https://igfl-kaist.github.io/`**를 사용한다. 기존 개인 홈페이지는 보존한다. Pages Source는 GitHub Actions, 저장소 변수는 `PAGES_ENABLED=true`다. **홈페이지 이전·배포가 선수 가입 개통을 뜻하지 않는다. 가입·개인정보 저장소 승인·시즌·리그 메일 자동 발송은 계속 닫아둔다.** 기존 Google Apps Script·비공개 Sheets·운영진 계정은 유지하며 알림용 홈페이지 URL만 새 주소에 맞춘다. Google의 기존 Sheets 및 메일 발송 OAuth 권한은 사용자가 승인했다. Organization을 새로 만들거나 개인 홈페이지 저장소를 변경하지 않는다.
 
 ## 먼저 읽을 문서
 
