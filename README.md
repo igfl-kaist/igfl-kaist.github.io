@@ -50,3 +50,7 @@ GitHub Actions는 PR에서 테스트·빌드를 실행한다. Pages Source는 Gi
 ## 개인정보 안내
 
 [처리방침](https://noeyusiohc.github.io/igfl/#privacy)과 [가입 동의 안내](https://noeyusiohc.github.io/igfl/#consent)를 로그인 없이 제공한다. 공개 운영 문의처는 sy.choi@kaist.ac.kr이다. 학교·Google에 확인할 질문은 [별도 목록](docs/PRIVACY_EXTERNAL_CHECKLIST.md)에 정리한다. 안내 게시와 실제 가입 개통은 별개이며 가입·시즌·리그 메일·저장소 승인 스위치는 계속 닫힌다.
+
+## 운영진 로그인과 메일 시험
+
+운영 문의 계정은 정상 학교 이메일 OTP로 로그인한 뒤 [운영 관리](https://noeyusiohc.github.io/igfl/#admin)를 이용한다. 선수 가입은 계속 닫혀 있으며 운영진에게 선수 등록을 요구하지 않는다. 운영진 알림·심판 배정 요청의 수동 시험 두 통은 해당 주소에만 발송했다. 자동 메일은 꺼져 있고 트리거를 설치하지 않았다. 실제 검증 범위와 도구는 [배포 기록](docs/AUTH_DEPLOYMENT.md)과 [운영 인계](docs/LEAGUE_OPERATIONS.md)를 따른다.

@@ -115,3 +115,13 @@ Sheets 개별 변경 이력의 파기가 지원되지 않아 별도 `PRIVACY_STO
 로그인 없이 `#privacy` 처리방침과 `#consent` 동의 안내를 읽을 수 있다. 하단·로그인·가입 양식에서 연결하고 공통 원본의 동의 문구/버전을 서버와 브라우저에 적용했다. 자동 테스트 72개·정적/GAS 빌드를 통과했다. 390×844에서 가로 넘침 없음, 필수 동의 두 개 미선택·비활성화와 가입 제출 차단을 별도 합성 계정에서 확인했다. 실제 선수 정보 입력이나 이메일 발송은 하지 않았다.
 
 학교·Google 확인 질문은 [외부 확인 목록](PRIVACY_EXTERNAL_CHECKLIST.md)에 기록한다. 확인 전 국가·계약 법인·삭제 보장 기간을 임의로 채우지 않는다. 공개 운영 문의 주소는 사용자가 게시를 승인한 연락처이며 개인 Google 소유 계정 주소·선수 정보·비밀값과 구분한다.
+
+## 2026-10-19 최초 운영진과 수동 알림 메일
+
+사용자 요청과 권한 부여 직전 승인에 따라 공개 운영 문의 계정 `sy.choi@kaist.ac.kr`의 기존 이메일 인증 Accounts 매핑을 운영진 내부 ID 목록에 추가했다. 선수 미등록 상태를 유지하며 운영진 알림 수신 주소와 공개 사이트 URL을 지정했다. 14:35 KST 소유자 진단에서 `readiness=ready`, `adminBound=true`, `adminMailConfigured=true`, `siteConfigured=true`를 확인했다. 내부 ID·비밀값·인증 레코드는 공개하지 않는다.
+
+14:33 KST 기존 URL·소유자 실행·모든 사용자 호출 설정과 기존 OAuth 두 범위를 유지해 **배포 버전 10 / 코드 0.4.2**로 갱신했다. [PR #6](https://github.com/noeyusiohc/igfl/pull/6)을 병합했고 [Pages 배포](https://github.com/noeyusiohc/igfl/actions/runs/39205126091)가 성공했다. 자동 검증 77개·정적/GAS 빌드가 통과했다. 실제 HTTP health도 0.4.2를 반환했고 공개 조회의 가입·시즌 닫힘, 선수/팀 0을 확인했다.
+
+14:35 KST `sendOperationsMailTests()`를 한 번 실행했다. `[IGFL] [테스트] 팀 등록 신청`(운영진 수신자 분기)과 `[IGFL] [테스트] 심판 배정 요청`(합성 심판 ID→이메일 해석 분기)을 지정 운영 문의 주소로만 각각 한 통 발송했다. 실제 공통 메일 본문/발송 함수를 사용했고 실제 outbox·선수·경기는 만들지 않았다. 저널 `manual-admin-v1`, `manual-referee-v1` 모두 sent, 실행 완료를 화면에서 확인했으며 잔여 수신자분은 1499→1497이었다. 이 수치는 해당 시점의 잔여 할당량으로 고정 일일 한도는 아니다. MailApp 성공과 수신함 도착은 구분하며, 이어서 사용자가 두 통 모두 수신했다고 직접 확인했다. 이번 메일 시험의 발송·수신 확인은 완료됐다.
+
+적용 후에도 `registrationRequested=false`, `privacyStorageApproved=false`, `seasonOpen=false`, `leagueEmailsEnabled=false`다. 자동 메일 트리거는 추가하지 않았고 기존 개인정보 정리 트리거는 유지했다. 이번 실전 검증은 단일 운영 계정 연결과 제한된 두 통의 메일 시험이며 여러 실제 사용자의 동시 심판 수락·발송 장애 복구를 실전 검증한 것은 아니다. 정상 OTP로 로그인하면 운영 관리 화면을 사용할 수 있다.
