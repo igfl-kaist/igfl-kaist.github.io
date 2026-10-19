@@ -225,6 +225,47 @@ function initializeLeagueStorage() {
   });
 }
 // Owner installs a time trigger after configuring recipients. No mail is sent during pilot setup.
+function leagueMailRecipients_(props, state, job) {
+  return [
+    ...new Set(
+      (job.recipients === "admins"
+        ? (props.getProperty("LEAGUE_ADMIN_EMAILS") || "").split(",")
+        : job.recipients.map(
+            (id) => state.profiles.find((p) => p.id === id)?.email,
+          )
+      )
+        .map((email) => String(email || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+function sendLeagueEmail_(props, job, manualTest) {
+  MailApp.sendEmail({
+    to: job.recipients.join(","),
+    subject:
+      "[IGFL] " +
+      (manualTest ? "[테스트] " : "") +
+      ({
+        refereeRequest: "심판 배정 요청",
+        teamApplication: "팀 등록 신청",
+        eligibility: "선수 자격 확인 요청",
+        dispute: "경기 이의 제기",
+        scoreMismatch: "경기 스코어 불일치",
+        externalApproval: "외부 심판 경기 승인 대기",
+        matchIncident: "경기 예외 보고",
+        resultOverdue: "경기 결과 제출·확인 지연",
+        approvalOverdue: "경기 최종 승인 지연",
+        teamVacancy: "회원 탈퇴로 인한 팀 대표 공석",
+      }[job.kind] || "운영 알림"),
+    body:
+      (manualTest
+        ? "운영자가 요청한 수동 발송 시험입니다. 실제 팀 신청이나 심판 배정 요청이 아니며, 수락·승인할 필요가 없습니다.\n선수 가입과 리그 메일 자동 발송은 닫혀 있습니다.\n\n"
+        : "홈페이지에서 요청 내용을 확인해 주세요.\n") +
+      (props.getProperty("LEAGUE_SITE_URL") || "") +
+      "\n알림 ID: " +
+      job.id,
+  });
+}
 function processLeagueEmails() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty("LEAGUE_EMAILS_ENABLED") !== "true") return;
@@ -242,14 +283,7 @@ function processLeagueEmails() {
             (!j.nextAttemptAt || j.nextAttemptAt <= now),
         );
       if (!j) return null;
-      const recipients =
-        j.recipients === "admins"
-          ? (props.getProperty("LEAGUE_ADMIN_EMAILS") || "")
-              .split(",")
-              .filter(Boolean)
-          : j.recipients
-              .map((id) => s.profiles.find((p) => p.id === id)?.email)
-              .filter(Boolean);
+      const recipients = leagueMailRecipients_(props, s, j);
       if (
         !recipients.length ||
         MailApp.getRemainingDailyQuota() < recipients.length
@@ -267,28 +301,7 @@ function processLeagueEmails() {
     if (!job) return;
     let success = true;
     try {
-      MailApp.sendEmail({
-        to: job.recipients.join(","),
-        subject:
-          "[IGFL] " +
-          ({
-            refereeRequest: "심판 배정 요청",
-            teamApplication: "팀 등록 신청",
-            eligibility: "선수 자격 확인 요청",
-            dispute: "경기 이의 제기",
-            scoreMismatch: "경기 스코어 불일치",
-            externalApproval: "외부 심판 경기 승인 대기",
-            matchIncident: "경기 예외 보고",
-            resultOverdue: "경기 결과 제출·확인 지연",
-            approvalOverdue: "경기 최종 승인 지연",
-            teamVacancy: "회원 탈퇴로 인한 팀 대표 공석",
-          }[job.kind] || "운영 알림"),
-        body:
-          "홈페이지에서 요청 내용을 확인해 주세요.\n" +
-          (props.getProperty("LEAGUE_SITE_URL") || "") +
-          "\n알림 ID: " +
-          job.id,
-      });
+      sendLeagueEmail_(props, job, false);
     } catch (e) {
       success = false;
     }
