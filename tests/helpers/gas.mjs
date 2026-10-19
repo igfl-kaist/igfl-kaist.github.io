@@ -143,6 +143,7 @@ export function harness() {
     "server/images.mjs",
     "apps-script/LeagueAdapter.gs",
     "apps-script/OwnerSetup.gs",
+    "apps-script/RecruitmentSetup.gs",
     "apps-script/PrivacyVerification.gs",
   ])
     vm.runInContext(

@@ -26,10 +26,11 @@ test("owner notice publication configures the public contact and shared consent 
   );
 });
 
-test("public notices contain the exact shared consents, operator contact and closed-registration notice without collecting information", () => {
+test("public notices contain the exact shared consents, operator contact and recruitment-stage notice without collecting information", () => {
   for (const consent of [false, true]) {
     const html = privacyPage(consent);
-    assert.match(html, /실제 선수 가입은 닫혀/);
+    assert.match(html, /선수 가입과 팀 모집/);
+    assert.match(html, /경기 등록과 자동 리그 메일은 아직 닫혀/);
     assert.ok(html.includes("mailto:" + PRIVACY.contact));
     assert.ok(html.includes(PRIVACY.publicNotice));
     assert.ok(html.includes(PRIVACY.collectionVersion));
@@ -39,4 +40,7 @@ test("public notices contain the exact shared consents, operator contact and clo
   assert.match(privacyPage(), /24시간.*시간별|24시간 기준/);
   assert.match(privacyPage(), /이전 파일·사본·휴지통/);
   assert.match(privacyPage(), /확인되지 않은 국가나 삭제 기간/);
+  assert.match(privacyPage(), /복구를 요청하거나 복원해 사용하지/);
+  assert.match(privacyPage(), /즉시 완전 삭제를 보장하지/);
+  assert.match(PRIVACY.collectionNotice, /운영자가 수동 파기/);
 });

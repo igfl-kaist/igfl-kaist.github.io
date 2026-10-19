@@ -1,13 +1,13 @@
 /* IGFL email auth. No passwords, raw OTPs, or raw session tokens are stored. */
 const IGFL_ = Object.freeze({
   protocol: "igfl-auth-v1",
-  version: "0.5.0",
+  version: "0.6.0",
   codeTtl: 300000,
   sessionTtl: 43200000,
   cooldown: 60000,
   maxAttempts: 5,
   emailHourly: 5,
-  dailyBudget: 50,
+  dailyBudget: 300,
 });
 
 function doGet() {
@@ -42,6 +42,7 @@ function doPost(event) {
           pilot: config.emailScope === "pilot",
           emailScope: config.emailScope,
           allowedDomain: "kaist.ac.kr",
+          authRequestBudgetPer24Hours: IGFL_.dailyBudget,
         };
         break;
       }

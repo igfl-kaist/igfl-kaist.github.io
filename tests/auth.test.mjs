@@ -5,9 +5,9 @@ import { createHmac, createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createAuthClient, validateEndpoint } from "../src/auth-client.mjs";
 
-function server() {
+function server(initialQuota = 100) {
   let now = 1800000000000,
-    remaining = 100,
+    remaining = initialQuota,
     sendFails = false,
     duplicateUuid = false,
     createdSheets = 0;
@@ -206,7 +206,7 @@ test("unknown or empty allow-list mode fails closed and owner diagnostics send n
   const s = server(),
     status = s.inspect();
   assert.equal(status.remainingMailRecipients, 100);
-  assert.equal(status.authRequestBudgetPer24Hours, 50);
+  assert.equal(status.authRequestBudgetPer24Hours, 300);
   assert.equal(s.mail.length, 0);
   assert.equal(
     JSON.stringify(s.logs).includes(s.properties.AUTH_SECRET),
@@ -376,12 +376,27 @@ test("hourly limit and global rolling daily budget", () => {
     s.advance(60000);
   }
   assert.equal(s.request().error.code, "RATE_LIMITED");
-  const other = server();
-  for (let i = 0; i < 50; i++) {
-    assert.equal(other.request().ok, true);
-    other.advance(1200000);
+  const other = server(1500);
+  other.allowKaist();
+  for (let i = 0; i < 300; i++) {
+    assert.equal(
+      other.call("requestCode", {
+        email: `p${i}@kaist.ac.kr`,
+        purpose: "login",
+      }).ok,
+      true,
+    );
   }
   assert.equal(other.request().error.code, "QUOTA_EXCEEDED");
+  assert.equal(other.mail.length, 300);
+  other.advance(86400001);
+  assert.equal(other.request().ok, true);
+  const limited = server(2);
+  assert.equal(limited.request().ok, true);
+  limited.advance(60000);
+  assert.equal(limited.request().ok, true);
+  limited.advance(60000);
+  assert.equal(limited.request().error.code, "QUOTA_EXCEEDED");
 });
 test("client uses a readable simple POST, keeps OTP/token out of URL", async () => {
   const endpoint = "https://script.google.com/macros/s/example/exec";

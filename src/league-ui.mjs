@@ -748,6 +748,13 @@ export function createLeagueUI({
     const pre = view.settings.competitionPhase === "preseason";
     const t = myTeam(),
       refs = view.players.filter((p) => p.referee && p.teamId !== t.id);
+    if (!view.settings.seasonOpen) {
+      content.innerHTML =
+        heading("MATCH SCHEDULE", "경기 등록은 준비 중이에요") +
+        tabs() +
+        '<p class="notice">현재는 선수 등록과 팀 모집 기간이에요. 경기 일정·결과 등록 개통은 운영 안내에서 별도로 공지할게요.</p><a class="link" href="#operations">운영 안내 보기 ↗</a>';
+      return;
+    }
     content.innerHTML =
       heading(
         "MATCH SCHEDULE",
