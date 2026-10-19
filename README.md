@@ -4,7 +4,7 @@ ISE & GSDS Futsal League. KAIST 이메일 로그인, 선수 등록, 팀 운영, 
 
 2026-10-18 기준 선수·팀·경기·심판·운영진 화면과 서버 규칙을 구현했다. 자동 테스트 **72개 통과**. 합성 데이터 브라우저에서 양 팀 기록 제출 → 양 팀 확인 → 내부 심판 최종 승인 → 랭킹 갱신을 확인했다. 실제 Apps Script 서버의 공개 리그 조회도 로컬 브라우저에서 연결했다. 정확한 `@kaist.ac.kr` 이메일 인증을 허용했으며 실제 선수 가입과 시즌은 계속 닫혀 있다. 실제 이메일 로그인 검증은 [인증 배포 기록](docs/AUTH_DEPLOYMENT.md)에 있다.
 
-**공개 홈페이지:** [IGFL](https://noeyusiohc.github.io/igfl/). 2026-10-16 사용자 승인으로 [저장소](https://github.com/noeyusiohc/igfl)를 공개하고 PR #1을 main에 병합했다. [Pages 배포 실행](https://github.com/noeyusiohc/igfl/actions/runs/38854152477)의 테스트·빌드·배포가 모두 성공했다. 실제 Pages 브라우저에서 소개·랭킹 데이터·인증 서버 health 응답을 확인했다. 기존 개인 홈페이지와 별도 프로젝트 경로를 사용한다.
+**공개 홈페이지:** [IGFL](https://igfl-kaist.github.io/). 2026-10-16 사용자 승인으로 [저장소](https://github.com/igfl-kaist/igfl-kaist.github.io)를 공개하고 PR #1을 main에 병합했다. [Pages 배포 실행](https://github.com/igfl-kaist/igfl-kaist.github.io/actions/runs/38854152477)의 테스트·빌드·배포가 모두 성공했다. 실제 Pages 브라우저에서 소개·랭킹 데이터·인증 서버 health 응답을 확인했다. 2026-10-19 사용자 지시로 리그 Organization의 루트 주소로 이전했다. 기존 개인 홈페이지는 보존한다.
 
 **리그 운영 개통 전 상태다.** 개인정보·경기 운영 정책을 반영했으며 사용자 지시로 실제 선수 가입은 서버에서 닫혀 있다. 시즌도 닫혀 있고 최초 운영진·알림 수신자·메일 작업은 아직 설정하지 않았다. 공개 홈페이지에는 실제 선수·팀 데이터나 합성 검증 계정 선택기를 넣지 않는다.
 
@@ -49,8 +49,8 @@ GitHub Actions는 PR에서 테스트·빌드를 실행한다. Pages Source는 Gi
 
 ## 개인정보 안내
 
-[처리방침](https://noeyusiohc.github.io/igfl/#privacy)과 [가입 동의 안내](https://noeyusiohc.github.io/igfl/#consent)를 로그인 없이 제공한다. 공개 운영 문의처는 sy.choi@kaist.ac.kr이다. 학교·Google에 확인할 질문은 [별도 목록](docs/PRIVACY_EXTERNAL_CHECKLIST.md)에 정리한다. 안내 게시와 실제 가입 개통은 별개이며 가입·시즌·리그 메일·저장소 승인 스위치는 계속 닫힌다.
+[처리방침](https://igfl-kaist.github.io/#privacy)과 [가입 동의 안내](https://igfl-kaist.github.io/#consent)를 로그인 없이 제공한다. 공개 운영 문의처는 sy.choi@kaist.ac.kr이다. 학교·Google에 확인할 질문은 [별도 목록](docs/PRIVACY_EXTERNAL_CHECKLIST.md)에 정리한다. 안내 게시와 실제 가입 개통은 별개이며 가입·시즌·리그 메일·저장소 승인 스위치는 계속 닫힌다.
 
 ## 운영진 로그인과 메일 시험
 
-운영 문의 계정은 정상 학교 이메일 OTP로 로그인한 뒤 [운영 관리](https://noeyusiohc.github.io/igfl/#admin)를 이용한다. 선수 가입은 계속 닫혀 있으며 운영진에게 선수 등록을 요구하지 않는다. 운영진 알림·심판 배정 요청의 수동 시험 두 통은 해당 주소에만 발송했다. 자동 메일은 꺼져 있고 트리거를 설치하지 않았다. 실제 검증 범위와 도구는 [배포 기록](docs/AUTH_DEPLOYMENT.md)과 [운영 인계](docs/LEAGUE_OPERATIONS.md)를 따른다.
+운영 문의 계정은 정상 학교 이메일 OTP로 로그인한 뒤 [운영 관리](https://igfl-kaist.github.io/#admin)를 이용한다. 선수 가입은 계속 닫혀 있으며 운영진에게 선수 등록을 요구하지 않는다. 운영진 알림·심판 배정 요청의 수동 시험 두 통은 해당 주소에만 발송했다. 자동 메일은 꺼져 있고 트리거를 설치하지 않았다. 실제 검증 범위와 도구는 [배포 기록](docs/AUTH_DEPLOYMENT.md)과 [운영 인계](docs/LEAGUE_OPERATIONS.md)를 따른다.
