@@ -1,3 +1,4 @@
+import { isUnrefereed, matchDuration } from "../src/competition.mjs";
 import { PRIVACY } from "../src/privacy-content.mjs";
 // Shared policies and additional league workflows. No private contacts or secrets.
 export const LeaguePolicies = (() => {
@@ -60,6 +61,7 @@ export const LeaguePolicies = (() => {
     privacyVersion: PRIVACY.collectionVersion,
     clockMode: "running",
     refereeCount: 1,
+    competitionPhase: "regular",
     seasonEndsAt: null,
     privacyNotice: PRIVACY.collectionNotice,
   };
@@ -106,10 +108,10 @@ export const LeaguePolicies = (() => {
       m.status === "review"
     )
       return;
-    const assigned = m.refereeId || m.externalReferee?.accepted;
+    const assigned = isUnrefereed(m) || m.refereeId || m.externalReferee?.accepted;
     const both = [m.teamA, m.teamB].every(
       (id) =>
-        m.rosters[id]?.length >= 5 &&
+        m.rosters[id]?.length >= (m.playersPerSide || 5) &&
         (!m.scheduleConfirmations ||
           m.scheduleConfirmations[id] === m.scheduleVersion),
     );
@@ -262,7 +264,7 @@ export const LeaguePolicies = (() => {
         if (
           m.startsAt <= now + day &&
           m.startsAt > now &&
-          !m.refereeId &&
+          !isUnrefereed(m) && !m.refereeId &&
           !m.externalReferee?.accepted
         ) {
           const count = s.notifications.length;
@@ -271,7 +273,7 @@ export const LeaguePolicies = (() => {
           );
           if (count !== s.notifications.length) changed = true;
         }
-        if (now >= m.startsAt + 45 * 60000 + 2 * day && m.status !== "ready")
+        if (now >= m.startsAt + matchDuration(m) + 2 * day && m.status !== "ready")
           alert(m, "resultOverdue");
         if (m.status === "ready" && m.readyAt && now >= m.readyAt + day)
           alert(m, "approvalOverdue");
@@ -522,6 +524,12 @@ export const LeaguePolicies = (() => {
             note: "양 팀 일정 변경 합의",
             changedAt: ctx.now,
           });
+          const deadlines = [
+            m.seasonEndsAt,
+            m.seasonId === s.settings.seasonId ? s.settings.seasonEndsAt : null,
+            ...s.seasons.filter((season) => season.id === m.seasonId).map((season) => season.endsAt),
+          ].map(Number).filter((end) => Number.isFinite(end) && end > 0);
+          check(!deadlines.length || change.startsAt + matchDuration(m) <= Math.min(...deadlines), "SEASON_ENDED", "해당 시즌 종료 전 끝나는 경기만 등록할 수 있어요.");
           m.startsAt = change.startsAt;
           m.place = change.place;
           m.scheduleVersion++;
@@ -543,6 +551,7 @@ export const LeaguePolicies = (() => {
             api.enqueue(s, ctx, "refereeRequest", [id], m.id),
           );
           m.status = "awaiting_referee";
+          scheduleStatus(m);
         }
         delete m.scheduleChange;
         return done(m.id);
@@ -688,7 +697,7 @@ export const LeaguePolicies = (() => {
           m.submissions = {};
           m.allowReplay = args.outcome === "abandoned";
         }
-        s.ratingLedger = api.records(s).ledger;
+        s.ratingLedger = api.ledger(s);
         return done(m.id);
       }
       case "requestFinalCorrection": {

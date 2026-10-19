@@ -1,4 +1,5 @@
 // Shared domain service: Node and Apps Script run this exact implementation.
+import { COMPETITION, isUnrefereed, matchDuration } from "../src/competition.mjs";
 import { LeaguePolicies } from "./policies.mjs";
 export const League = (() => {
   const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -123,7 +124,7 @@ export const League = (() => {
       return { ...r, rank };
     });
   }
-  function records(s) {
+  function records(s, seasonId = s.settings.seasonId) {
     const teams = new Map(
       s.teams.map((t) => [
         t.id,
@@ -142,7 +143,7 @@ export const League = (() => {
       .filter(
         (m) =>
           (m.status === "final" || m.officialRecord) &&
-          m.seasonId === s.settings.seasonId,
+          m.seasonId === seasonId,
       )
       .map((m) => (m.status === "final" ? m : m.officialRecord))
       .sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
@@ -173,6 +174,7 @@ export const League = (() => {
       b.lost += +wonA;
       ledger.push({
         matchId: m.id,
+        seasonId,
         rule: "elo-1000-k32-400-v1",
         beforeA,
         beforeB,
@@ -216,6 +218,18 @@ export const League = (() => {
       ledger,
     };
   }
+  function ledger(s) {
+    return [...new Set(s.matches.map((m) => m.seasonId))].flatMap((id) => records(s, id).ledger);
+  }
+  function seasonBoards(s) {
+    const known = [
+      { id: COMPETITION.preseasonId, name: COMPETITION.preseasonName, phase: "preseason" },
+      { id: COMPETITION.regularId, name: COMPETITION.regularName, phase: "regular" },
+      ...s.matches.map((m) => ({ id: m.seasonId, name: m.seasonName || m.seasonId, phase: m.phase || "regular" })),
+      { id: s.settings.seasonId, name: s.settings.seasonName, phase: s.settings.competitionPhase || "regular" },
+    ];
+    return [...new Map(known.map((x) => [x.id, x])).values()].map((x) => ({ ...x, records: records(s, x.id) }));
+  }
   function publicView(s) {
     const active = s.teams.filter((t) =>
       ["active", "paused", "excluded"].includes(t.status),
@@ -243,6 +257,7 @@ export const League = (() => {
         graceEndsAt: t.graceEndsAt || null,
       })),
       records: records(s),
+      seasonBoards: seasonBoards(s),
     };
   }
   function privateView(s, actor) {
@@ -272,6 +287,11 @@ export const League = (() => {
             id: m.id,
             teamA: m.teamA,
             teamB: m.teamB,
+            seasonId: m.seasonId,
+            phase: m.phase || "regular",
+            playersPerSide: m.playersPerSide || 5,
+            halfMinutes: m.halfMinutes || 20,
+            refereeMode: m.refereeMode,
             startsAt: m.startsAt,
             place: m.place,
             status: m.status,
@@ -407,9 +427,9 @@ export const League = (() => {
   }
   function validRoster(s, t, ids, m) {
     list(ids);
-    require(ids.length >= 5 &&
+    require(ids.length >= (m.playersPerSide || 5) &&
       ids.length <=
-        20, "INVALID_ROSTER", "교체 선수를 포함해 5~20명을 선택해 주세요.");
+        20, "INVALID_ROSTER", `교체 선수를 포함해 ${m.playersPerSide || 5}~20명을 선택해 주세요.`);
     for (const id of ids) {
       require(t.members.includes(id) ||
         s.memberships.some(
@@ -426,6 +446,17 @@ export const League = (() => {
       ), "PLAYER_SUSPENDED", "다음 공식 경기 출전 정지 선수가 포함돼 있어요.");
     }
     return snapshot(s, ids);
+  }
+  function finishMatch(s, m, ctx) {
+    m.status = "final";
+    m.finalizedAt = ctx.now;
+    m.finalizedBy = isUnrefereed(m) ? null : ctx.actorId;
+    m.finalizationMethod = isUnrefereed(m) ? "both-team-confirmations" : "referee-or-admin";
+    m.finalizedVersion = m.version;
+    delete m.officialRecord;
+    delete m.correctionOpen;
+    LeaguePolicies.finalized(s, m, ctx);
+    s.ratingLedger = ledger(s);
   }
   function updateMatchState(s, m, ctx) {
     if (LeaguePolicies.terminal(m)) return;
@@ -463,6 +494,10 @@ export const League = (() => {
       m.confirmations[m.teamB] === m.version
         ? "ready"
         : "awaiting_confirmations";
+    if (m.status === "ready" && isUnrefereed(m)) {
+      finishMatch(s, m, ctx);
+      return;
+    }
     if (m.status === "ready" && m.externalReferee)
       enqueue(s, ctx, "externalApproval", "admins", m.id);
     if (m.status === "ready" && m.readyVersion !== m.version) {
@@ -477,7 +512,9 @@ export const League = (() => {
       s.matches.find((m) => m.id === args.matchId)?.status === "final"
     ) {
       const m = get(s.matches, args.matchId);
-      require(m.externalReferee
+      require(isUnrefereed(m)
+        ? actor.admin || [m.teamA, m.teamB].some((id) => { const t = get(s.teams, id); return t.members.includes(actor.userId) && [t.captainId, t.viceId].includes(actor.userId); })
+        : m.externalReferee
         ? actor.admin
         : m.refereeId ===
             actor.userId, "FORBIDDEN", "최종 승인 권한이 없어요.");
@@ -495,6 +532,7 @@ export const League = (() => {
       enqueue,
       updateMatchState,
       records,
+      ledger,
     });
     if (extra.handled) entityId = extra.entityId;
     else
@@ -835,9 +873,27 @@ export const League = (() => {
           require(Number.isFinite(startsAt) &&
             startsAt >
               ctx.now, "INVALID_DATE", "미래의 경기 일시를 입력해 주세요.");
+          const phase = s.settings.competitionPhase || "regular",
+            playersPerSide = args.playersPerSide ?? 5,
+            halfMinutes = args.halfMinutes ?? 20,
+            refereeMode = args.refereeMode || (args.externalReferee ? "external" : "internal");
+          require(["regular", "preseason"].includes(phase) &&
+            (phase === "preseason" ? [5, 6].includes(playersPerSide) && [15, 20].includes(halfMinutes) : playersPerSide === 5 && halfMinutes === 20),
+            "INVALID_FORMAT", "프리시즌은 5·6대6과 전후반 15·20분, 정규리그는 5대5·전후반 20분이에요.");
+          require(["internal", "external", ...(phase === "preseason" ? ["none"] : [])].includes(refereeMode), "REFEREE_REQUIRED", "정규리그에는 심판이 필요해요.");
+          require(refereeMode === "external" ? !!args.externalReferee : !args.externalReferee, "INVALID_FORMAT", "심판 구분과 입력 내용을 확인해 주세요.");
+          require(refereeMode !== "none" || !(args.refereeIds || []).length, "INVALID_FORMAT", "심판 없는 경기에 심판 후보를 함께 요청할 수 없어요.");
+          require(!(s.settings.seasonId === COMPETITION.preseasonId && phase !== "preseason") &&
+            !(s.settings.seasonId === COMPETITION.regularId && phase !== "regular") &&
+            !s.matches.some((x) => x.seasonId === s.settings.seasonId && (x.phase || "regular") !== phase),
+            "SEASON_CONFIGURATION", "프리시즌과 정규리그는 서로 다른 시즌 ID로 운영해야 해요.");
+          const seasonEndsAt = Number(s.settings.seasonEndsAt) || null;
+          require(!seasonEndsAt || startsAt + (halfMinutes * 2 + 5) * 60000 <= seasonEndsAt, "SEASON_ENDED", "해당 시즌 종료 전 끝나는 경기만 등록할 수 있어요.");
           const m = {
             id: ctx.id(),
             seasonId: s.settings.seasonId,
+            seasonName: s.settings.seasonName,
+            phase, playersPerSide, halfMinutes, refereeMode, seasonEndsAt,
             teamA: t.id,
             teamB: other.id,
             startsAt,
@@ -846,7 +902,7 @@ export const League = (() => {
             scheduleVersion: 1,
             scheduleConfirmations: { [t.id]: 1 },
             clockMode: "running",
-            refereeCount: 1,
+            refereeCount: refereeMode === "none" ? 0 : 1,
             rosters: {},
             refereeRequests: [],
             refereeId: null,
@@ -867,7 +923,7 @@ export const League = (() => {
           m.rosters[t.id] = validRoster(s, t, args.roster, m);
           if (args.replayOf) {
             const previous = get(s.matches, args.replayOf);
-            require(previous.allowReplay &&
+            require(previous.seasonId === m.seasonId && previous.allowReplay &&
               [previous.teamA, previous.teamB].includes(t.id) &&
               [previous.teamA, previous.teamB].includes(other.id) &&
               !s.matches.some(
@@ -875,7 +931,9 @@ export const League = (() => {
               ), "INVALID_STATE", "재경기 대상과 기존 일정을 확인해 주세요.");
             m.replayOf = previous.id;
           }
-          if (args.externalReferee) {
+          if (refereeMode === "none") {
+            m.status = "awaiting_opponent";
+          } else if (args.externalReferee) {
             m.externalReferee = {
               name: text(args.externalReferee.name, 60),
               accepted: args.externalReferee.accepted === true,
@@ -946,7 +1004,7 @@ export const League = (() => {
                 x.id !== m.id &&
                 !LeaguePolicies.closed(x) &&
                 x.refereeId === actor.userId &&
-                Math.abs(x.startsAt - m.startsAt) < 45 * 60000,
+                x.startsAt < m.startsAt + matchDuration(m) && m.startsAt < x.startsAt + matchDuration(x),
             ), "REFEREE_CONFLICT", "같은 시간대에 배정된 경기가 있어요.");
             m.refereeId = actor.userId;
             r.status = "accepted";
@@ -972,14 +1030,7 @@ export const League = (() => {
                   actor.userId,
                   m,
                 ), "FORBIDDEN", "배정된 중립 심판만 최종 승인할 수 있어요.");
-            m.status = "final";
-            m.finalizedAt = ctx.now;
-            m.finalizedBy = actor.userId;
-            m.finalizedVersion = m.version;
-            delete m.officialRecord;
-            delete m.correctionOpen;
-            LeaguePolicies.finalized(s, m, ctx);
-            s.ratingLedger = records(s).ledger;
+            finishMatch(s, m, { ...ctx, actorId: actor.userId });
             break;
           }
           if (command === "dispute") {
@@ -1032,7 +1083,7 @@ export const League = (() => {
             break;
           }
           if (command === "requestReferees") {
-            require(!m.refereeId &&
+            require(!isUnrefereed(m) && !m.refereeId &&
               !m.externalReferee &&
               m.startsAt >
                 ctx.now, "INVALID_STATE", "심판 배정 전 경기만 추가 요청할 수 있어요.");
@@ -1053,10 +1104,10 @@ export const League = (() => {
             }
             break;
           }
-          require(m.refereeId ||
+          require(isUnrefereed(m) || m.refereeId ||
             m.externalReferee
               ?.accepted, "REFEREE_REQUIRED", "심판 배정 후 공식 경기 결과를 등록할 수 있어요.");
-          require(m.startsAt + 45 * 60000 <=
+          require(m.startsAt + matchDuration(m) <=
             ctx.now, "MATCH_NOT_FINISHED", "경기 종료 후 결과를 입력해 주세요.");
           if (command === "confirmResult") {
             require(m.submissions[
@@ -1080,8 +1131,8 @@ export const League = (() => {
             require(score.pkA !==
               score.pkB, "INVALID_SCORE", "승부차기 승자를 기록해 주세요.");
           }
-          require(m.rosters[m.teamA]?.length >= 5 &&
-            m.rosters[m.teamB]?.length >= 5 &&
+          require(m.rosters[m.teamA]?.length >= (m.playersPerSide || 5) &&
+            m.rosters[m.teamB]?.length >= (m.playersPerSide || 5) &&
             (!m.scheduleConfirmations ||
               [m.teamA, m.teamB].every(
                 (id) => m.scheduleConfirmations[id] === m.scheduleVersion,

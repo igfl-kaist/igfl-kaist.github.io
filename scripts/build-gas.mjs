@@ -6,6 +6,7 @@ const files = [
   "apps-script/AuthProperties.gs",
   "apps-script/StorageRotation.gs",
   "src/privacy-content.mjs",
+  "src/competition.mjs",
   "server/policies.mjs",
   "server/league.mjs",
   "server/images.mjs",
